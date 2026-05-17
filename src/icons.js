@@ -1,5 +1,7 @@
 import React from 'react';
+import { Image, View } from 'react-native';
 import Svg, { Path, Circle, Rect, Ellipse } from 'react-native-svg';
+import { EXO_IMAGES } from './exoImages';
 
 const sw = 1.5;
 
@@ -37,4 +39,20 @@ export function ExoIcon({ slug, size = 32, color = '#111' }) {
     return (<I size={size} color={color}><Circle cx="32" cy="32" r="20" /></I>);
   }
   return <Render size={size} color={color} />;
+}
+
+// Vignette : photo PNG si dispo, sinon icône SVG centrée.
+// `fill` = remplit le parent (utilisé pour les wrappers .exoThumb / .detailImg).
+export function ExoThumb({ slug, size = 32, fill = false, iconSize = null }) {
+  const img = EXO_IMAGES[slug];
+  const dim = fill ? { width: '100%', height: '100%' } : { width: size, height: size };
+  if (img) {
+    return <Image source={img} style={dim} resizeMode="cover" />;
+  }
+  const sz = iconSize != null ? iconSize : (fill ? 64 : Math.round(size * 0.55));
+  return (
+    <View style={[dim, { alignItems: 'center', justifyContent: 'center' }]}>
+      <ExoIcon slug={slug} size={sz} />
+    </View>
+  );
 }

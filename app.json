@@ -22,6 +22,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "20034ea5-e499-4e0d-bf13-885e6d6fd371"
+      }
+    },
+    "owner": "controlbreak"
   }
 }
