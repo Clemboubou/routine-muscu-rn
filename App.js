@@ -6,9 +6,11 @@ import { StatusBar } from 'expo-status-bar';
 import { S, COLORS } from './src/styles';
 import { MORNING, EVENING, SESSIONS, OFF_DAY } from './src/data';
 import { ExoIcon, ExoThumb, ExoHero } from './src/icons';
+import * as Clipboard from 'expo-clipboard';
 import {
-  loadHistory, lastMaxFor,
+  loadHistory, lastMaxFor, lastWeightsFor,
   loadDraft, saveDraft, clearDraft, commitSession,
+  exportData, importData,
 } from './src/storage';
 
 // Contexte pour ouvrir la lightbox depuis n'importe où dans l'arbre.
@@ -155,11 +157,12 @@ function SessionLogScreen({ sessionDay, onExit, onSaved, insets }) {
   const [notes, setNotes] = useState({});
   const [globalNote, setGlobalNote] = useState('');
   const [lastMaxes, setLastMaxes] = useState({});
+  const [lastSetsByExo, setLastSetsByExo] = useState({}); // {slug: ['80','85','85','80']}
   const [confirm, setConfirm] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const initialized = useRef(false);
 
-  // Init : charger brouillon ou créer structure vide
+  // Init : charger brouillon ou créer structure vide + derniers maxes + derniers poids/set
   useEffect(() => {
     (async () => {
       const draft = await loadDraft();
@@ -173,11 +176,15 @@ function SessionLogScreen({ sessionDay, onExit, onSaved, insets }) {
         setWeights(w);
       }
       const m = {};
+      const lw = {};
       for (const ex of exosToLog) {
         const last = await lastMaxFor(ex.slug);
         if (last) m[ex.slug] = last.max;
+        const lastW = await lastWeightsFor(ex.slug);
+        if (lastW) lw[ex.slug] = lastW;
       }
       setLastMaxes(m);
+      setLastSetsByExo(lw);
       initialized.current = true;
     })();
   }, [sessionDay]);
@@ -259,6 +266,7 @@ function SessionLogScreen({ sessionDay, onExit, onSaved, insets }) {
             key={i}
             exo={ex}
             weights={weights[ex.slug] || []}
+            lastWeights={lastSetsByExo[ex.slug]}
             note={notes[ex.slug] || ''}
             lastMax={lastMaxes[ex.slug]}
             onWeightChange={(idx, v) => setWeight(ex.slug, idx, v)}
@@ -317,7 +325,7 @@ function SessionLogScreen({ sessionDay, onExit, onSaved, insets }) {
   );
 }
 
-function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange }) {
+function ExoLogBlock({ exo, weights, lastWeights, note, lastMax, onWeightChange, onNoteChange }) {
   const isCardio = !!exo.cardio;
   const openLightbox = useContext(LightboxCtx);
   return (
@@ -343,6 +351,8 @@ function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange
           <View style={S.logSetsRow}>
             {weights.map((w, i) => {
               const filled = !!w;
+              const last = lastWeights && lastWeights[i];
+              const ph = last ? last : 'kg';
               return (
                 <View key={i} style={S.logSetCell}>
                   <Text style={S.logSetLabel}>S{i + 1}</Text>
@@ -350,7 +360,7 @@ function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange
                     style={[S.logSetInput, filled && S.logSetInputFilled]}
                     value={w}
                     onChangeText={(v) => onWeightChange(i, v)}
-                    placeholder="kg"
+                    placeholder={ph}
                     placeholderTextColor={COLORS.muted}
                     keyboardType="decimal-pad"
                   />
@@ -416,8 +426,11 @@ function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConf
 
 // ============ HISTORY ============
 
-function HistoryScreen({ historyVersion }) {
+function HistoryScreen({ historyVersion, onChanged }) {
   const [list, setList] = useState([]);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -426,37 +439,109 @@ function HistoryScreen({ historyVersion }) {
     })();
   }, [historyVersion]);
 
-  if (list.length === 0) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        <Text style={S.empty}>
-          Aucune séance enregistrée pour l'instant.{'\n'}
-          Termine ta première séance pour la voir ici.
-        </Text>
-      </View>
-    );
-  }
+  const flash = (msg, ms = 2200) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), ms);
+  };
+
+  const onExport = async () => {
+    const json = await exportData();
+    try {
+      await Clipboard.setStringAsync(json);
+      flash(`${list.length} séances copiées`);
+    } catch {
+      flash('Copie impossible');
+    }
+  };
+
+  const onImportConfirm = async () => {
+    const res = await importData(importText.trim());
+    if (res.ok) {
+      setImportOpen(false); setImportText('');
+      flash(`${res.count} séances importées`);
+      onChanged && onChanged();
+    } else {
+      flash(res.error, 4000);
+    }
+  };
+
+  const IOBar = (
+    <View style={S.ioBar}>
+      <Pressable style={S.ioBtn} onPress={onExport} android_ripple={{ color: COLORS.soft }}>
+        <Text style={S.ioBtnText}>Exporter (presse-papiers)</Text>
+      </Pressable>
+      <Pressable style={S.ioBtn} onPress={() => setImportOpen(true)} android_ripple={{ color: COLORS.soft }}>
+        <Text style={S.ioBtnText}>Importer</Text>
+      </Pressable>
+    </View>
+  );
 
   return (
-    <ScrollView contentContainerStyle={S.scroll}>
-      <View style={S.card}>
-        {list.map((entry, idx) => {
-          const dt = new Date(entry.date);
-          const dateStr = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-          const timeStr = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-          const exosLogged = entry.exos.filter(e => e.weights && e.weights.some(w => w));
-          const summary = exosLogged.map(e => `${e.name} ${e.weights.filter(w => w).join('/')}kg`).join(' · ');
-          return (
-            <View key={idx} style={S.historyRow}>
-              <Text style={S.historyDate}>{dateStr} · {timeStr}</Text>
-              <Text style={S.historySession}>{entry.sessionTitle}</Text>
-              <Text style={S.historyExos}>{summary || '(aucun poids saisi)'}</Text>
-              {entry.notes ? <Text style={S.historyNotes}>{entry.notes}</Text> : null}
+    <>
+      {list.length === 0 ? (
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+          <Text style={S.empty}>
+            Aucune séance enregistrée pour l'instant.{'\n'}
+            Termine ta première séance pour la voir ici.
+          </Text>
+          {IOBar}
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={S.scroll}>
+          <View style={S.card}>
+            {list.map((entry, idx) => {
+              const dt = new Date(entry.date);
+              const dateStr = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+              const timeStr = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+              const exosLogged = entry.exos.filter(e => e.weights && e.weights.some(w => w));
+              const summary = exosLogged.map(e => `${e.name} ${e.weights.filter(w => w).join('/')}kg`).join(' · ');
+              return (
+                <View key={idx} style={S.historyRow}>
+                  <Text style={S.historyDate}>{dateStr} · {timeStr}</Text>
+                  <Text style={S.historySession}>{entry.sessionTitle}</Text>
+                  <Text style={S.historyExos}>{summary || '(aucun poids saisi)'}</Text>
+                  {entry.notes ? <Text style={S.historyNotes}>{entry.notes}</Text> : null}
+                </View>
+              );
+            })}
+          </View>
+          {IOBar}
+        </ScrollView>
+      )}
+
+      {toastMsg && (
+        <View style={S.toast}><Text style={S.toastText}>{toastMsg}</Text></View>
+      )}
+
+      {importOpen && (
+        <View style={S.modalOverlay}>
+          <View style={S.modalCard}>
+            <Text style={S.modalTitle}>Importer un JSON</Text>
+            <Text style={S.modalText}>
+              Colle ici un export précédent. L'historique actuel sera REMPLACÉ.
+            </Text>
+            <TextInput
+              style={[S.logExoNote, { minHeight: 120, marginBottom: 16 }]}
+              value={importText}
+              onChangeText={setImportText}
+              placeholder='{"version":1,"history":[...]}'
+              placeholderTextColor={COLORS.muted}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={S.modalBtns}>
+              <Pressable style={S.modalBtnGhost} onPress={() => { setImportOpen(false); setImportText(''); }} android_ripple={{ color: COLORS.soft }}>
+                <Text style={S.modalBtnGhostText}>Annuler</Text>
+              </Pressable>
+              <Pressable style={S.modalBtnPrimary} onPress={onImportConfirm} android_ripple={{ color: '#333' }} disabled={!importText.trim()}>
+                <Text style={S.modalBtnPrimaryText}>Remplacer</Text>
+              </Pressable>
             </View>
-          );
-        })}
-      </View>
-    </ScrollView>
+          </View>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -529,7 +614,10 @@ function Shell() {
         ) : tab === 'training' ? (
           <TrainingPickerScreen onPickSession={startSession} draftSessionDay={draftSessionDay} />
         ) : (
-          <HistoryScreen historyVersion={historyVersion} />
+          <HistoryScreen
+            historyVersion={historyVersion}
+            onChanged={() => setHistoryVersion(v => v + 1)}
+          />
         )}
       </View>
 

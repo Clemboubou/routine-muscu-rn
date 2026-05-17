@@ -233,6 +233,14 @@ export const S = StyleSheet.create({
   logCancelBtn: { padding: 12, alignItems: 'center' },
   logCancelBtnText: { color: COLORS.muted, fontSize: 14 },
 
+  // === Export / Import bar (discret en bas d'Historique) ===
+  ioBar: {
+    flexDirection: 'row', justifyContent: 'center', gap: 20,
+    paddingVertical: 16,
+  },
+  ioBtn: { paddingVertical: 6, paddingHorizontal: 10 },
+  ioBtnText: { fontSize: 12, color: COLORS.muted, textDecorationLine: 'underline' },
+
   // === Lightbox ===
   lightboxOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,

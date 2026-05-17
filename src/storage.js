@@ -28,6 +28,47 @@ export async function lastMaxFor(slug) {
   return null;
 }
 
+// Renvoie les poids de la dernière séance pour cet exo (array brut, peut contenir '')
+// Sert à pré-remplir les inputs en placeholder.
+export async function lastWeightsFor(slug) {
+  const h = await loadHistory();
+  for (let i = h.length - 1; i >= 0; i--) {
+    const entry = h[i].exos.find(e => e.slug === slug);
+    if (entry && entry.weights && entry.weights.some(w => w)) {
+      return entry.weights.map(w => String(w || ''));
+    }
+  }
+  return null;
+}
+
+// === EXPORT / IMPORT ===
+export async function exportData() {
+  const h = await loadHistory();
+  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), history: h }, null, 2);
+}
+
+// Renvoie { ok: true, count } ou { ok: false, error }
+export async function importData(jsonStr) {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    let history;
+    // Accepte {version,history} ou directement un array
+    if (Array.isArray(parsed)) history = parsed;
+    else if (parsed && Array.isArray(parsed.history)) history = parsed.history;
+    else return { ok: false, error: 'Format non reconnu (attendu: {version, history:[...]} ou un array)' };
+    // Validation minimale
+    for (const e of history) {
+      if (!e.date || !e.sessionTitle || !Array.isArray(e.exos)) {
+        return { ok: false, error: 'Une entrée est invalide (date/sessionTitle/exos manquants)' };
+      }
+    }
+    await saveHistory(history);
+    return { ok: true, count: history.length };
+  } catch (err) {
+    return { ok: false, error: 'JSON invalide : ' + err.message };
+  }
+}
+
 // === BROUILLON DE SÉANCE ===
 // Un seul brouillon actif à la fois (l'utilisateur fait une séance à la fois).
 // Persistance : survit à la fermeture de l'app, au reboot, à la batterie morte.
