@@ -4,7 +4,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { StatusBar } from 'expo-status-bar';
 import { S, COLORS } from './src/styles';
 import { MORNING, EVENING, SESSIONS, OFF_DAY } from './src/data';
-import { ExoIcon, ExoThumb } from './src/icons';
+import { ExoIcon, ExoThumb, ExoHero } from './src/icons';
 import { loadHistory, lastMaxFor, addSetEntry } from './src/storage';
 
 function todayLabel() {
@@ -24,7 +24,7 @@ function ExoRow({ exo, last, onPress, lastMax, clickable = true }) {
   const content = (
     <View style={[S.exoRow, last && S.exoRowLast]}>
       <View style={S.exoThumb}>
-        <ExoThumb slug={exo.slug} fill iconSize={32} />
+        <ExoThumb slug={exo.slug} iconSize={32} />
       </View>
       <View style={S.exoInfo}>
         <Text style={S.exoName}>{exo.name}</Text>
@@ -216,8 +216,8 @@ function ExoDetail({ exo, sessionTitle, onBack, onSaved }) {
         <Text style={S.backBtnText}>← Retour</Text>
       </Pressable>
 
-      <View style={S.detailImg}>
-        <ExoThumb slug={exo.slug} fill iconSize={80} />
+      <View style={{ marginBottom: 16 }}>
+        <ExoHero slug={exo.slug} />
       </View>
 
       <Text style={S.detailName}>{exo.name}</Text>

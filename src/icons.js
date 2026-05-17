@@ -41,18 +41,41 @@ export function ExoIcon({ slug, size = 32, color = '#111' }) {
   return <Render size={size} color={color} />;
 }
 
-// Vignette : photo PNG si dispo, sinon icône SVG centrée.
-// `fill` = remplit le parent (utilisé pour les wrappers .exoThumb / .detailImg).
-export function ExoThumb({ slug, size = 32, fill = false, iconSize = null }) {
+// Vignette carrée pour les listes : crop léger acceptable à petite taille.
+export function ExoThumb({ slug, size = 56, iconSize = null }) {
   const img = EXO_IMAGES[slug];
-  const dim = fill ? { width: '100%', height: '100%' } : { width: size, height: size };
   if (img) {
-    return <Image source={img} style={dim} resizeMode="contain" />;
+    return <Image source={img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />;
   }
-  const sz = iconSize != null ? iconSize : (fill ? 64 : Math.round(size * 0.55));
+  const sz = iconSize != null ? iconSize : Math.round(size * 0.55);
   return (
-    <View style={[dim, { alignItems: 'center', justifyContent: 'center' }]}>
+    <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
       <ExoIcon slug={slug} size={sz} />
+    </View>
+  );
+}
+
+// Grosse image pour la vue détail : ratio naturel, plein largeur, zéro espace vide.
+export function ExoHero({ slug, borderRadius = 12 }) {
+  const img = EXO_IMAGES[slug];
+  if (img) {
+    const meta = Image.resolveAssetSource(img);
+    const ratio = meta && meta.width && meta.height ? meta.width / meta.height : 1.5;
+    return (
+      <Image
+        source={img}
+        style={{ width: '100%', aspectRatio: ratio, borderRadius }}
+        resizeMode="cover"
+      />
+    );
+  }
+  return (
+    <View style={{
+      width: '100%', aspectRatio: 1.6, borderRadius,
+      backgroundColor: '#fafafa', borderWidth: 1, borderColor: '#ececec',
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      <ExoIcon slug={slug} size={80} />
     </View>
   );
 }
