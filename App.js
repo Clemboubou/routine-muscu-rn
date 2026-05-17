@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Platform, Image } from 'react-native';
+import { EXO_IMAGES, EXO_RATIOS } from './src/exoImages';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { S, COLORS } from './src/styles';
@@ -9,6 +10,9 @@ import {
   loadHistory, lastMaxFor,
   loadDraft, saveDraft, clearDraft, commitSession,
 } from './src/storage';
+
+// Contexte pour ouvrir la lightbox depuis n'importe où dans l'arbre.
+const LightboxCtx = createContext(() => {});
 
 function todayLabel() {
   return new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -23,23 +27,23 @@ function TimelineRow({ time, text, last }) {
   );
 }
 
-function ExoRow({ exo, last, onPress, lastMax, clickable = false }) {
-  const content = (
+function ExoRow({ exo, last, lastMax }) {
+  const openLightbox = useContext(LightboxCtx);
+  return (
     <View style={[S.exoRow, last && S.exoRowLast]}>
-      <View style={S.exoThumb}>
-        <ExoThumb slug={exo.slug} iconSize={32} />
-      </View>
+      <Pressable onPress={() => openLightbox(exo.slug)} android_ripple={{ color: COLORS.soft, borderless: true }}>
+        <View style={S.exoThumb}>
+          <ExoThumb slug={exo.slug} iconSize={32} />
+        </View>
+      </Pressable>
       <View style={S.exoInfo}>
         <Text style={S.exoName}>{exo.name}</Text>
         <Text style={S.exoMeta}>{exo.meta}</Text>
         {exo.warn && <Text style={S.exoWarn}>⚠ {exo.warn}</Text>}
         {lastMax != null && <Text style={S.exoLast}>Dernier max : {lastMax} kg</Text>}
       </View>
-      {clickable && <Text style={S.chevron}>›</Text>}
     </View>
   );
-  if (!clickable) return content;
-  return <Pressable onPress={onPress} android_ripple={{ color: COLORS.soft }}>{content}</Pressable>;
 }
 
 // ============ TODAY ============
@@ -315,12 +319,15 @@ function SessionLogScreen({ sessionDay, onExit, onSaved, insets }) {
 
 function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange }) {
   const isCardio = !!exo.cardio;
+  const openLightbox = useContext(LightboxCtx);
   return (
     <View style={S.logExoBlock}>
       <View style={S.logExoHeader}>
-        <View style={S.exoThumb}>
-          <ExoThumb slug={exo.slug} iconSize={28} />
-        </View>
+        <Pressable onPress={() => openLightbox(exo.slug)} android_ripple={{ color: COLORS.soft, borderless: true }}>
+          <View style={S.exoThumb}>
+            <ExoThumb slug={exo.slug} iconSize={28} />
+          </View>
+        </Pressable>
         <Text style={S.logExoName}>{exo.name}</Text>
       </View>
       <Text style={S.logExoMeta}>{exo.meta}</Text>
@@ -362,6 +369,27 @@ function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange
         </>
       )}
     </View>
+  );
+}
+
+// ============ LIGHTBOX ============
+
+function Lightbox({ slug, onClose, exoName }) {
+  const img = EXO_IMAGES[slug];
+  if (!img) return null;
+  const ratio = EXO_RATIOS[slug] || 1.5;
+  return (
+    <Pressable style={S.lightboxOverlay} onPress={onClose}>
+      <Pressable style={S.lightboxClose} onPress={onClose}>
+        <Text style={S.lightboxCloseText}>×</Text>
+      </Pressable>
+      <Image
+        source={img}
+        style={{ width: '100%', aspectRatio: ratio, maxHeight: '85%' }}
+        resizeMode="contain"
+      />
+      {exoName ? <Text style={S.lightboxCaption}>{exoName}</Text> : null}
+    </Pressable>
   );
 }
 
@@ -445,7 +473,18 @@ function Shell() {
   const [sessionMode, setSessionMode] = useState(null); // null ou dayIdx (1/3/5)
   const [historyVersion, setHistoryVersion] = useState(0);
   const [draftSessionDay, setDraftSessionDay] = useState(null);
+  const [lightboxSlug, setLightboxSlug] = useState(null);
   const insets = useSafeAreaInsets();
+
+  // Trouver le nom français de l'exo pour la caption de la lightbox
+  const lightboxExoName = lightboxSlug ? (() => {
+    for (const di of [1, 3, 5]) {
+      const found = SESSIONS[di].exos.find(e => e.slug === lightboxSlug);
+      if (found) return found.name;
+    }
+    const off = OFF_DAY.items.find(e => e.slug === lightboxSlug);
+    return off ? off.name : null;
+  })() : null;
 
   // Charger info brouillon (pour afficher "EN COURS" sur la séance correspondante)
   useEffect(() => {
@@ -470,6 +509,7 @@ function Shell() {
   else title = 'Historique';
 
   return (
+    <LightboxCtx.Provider value={setLightboxSlug}>
     <View style={[S.root, { paddingTop: insets.top, paddingBottom: sessionMode != null ? 0 : insets.bottom }]}>
       <View style={S.topbar}>
         <Text style={S.topbarTitle}>{title}</Text>
@@ -507,7 +547,12 @@ function Shell() {
           ))}
         </View>
       )}
+
+      {lightboxSlug && (
+        <Lightbox slug={lightboxSlug} exoName={lightboxExoName} onClose={() => setLightboxSlug(null)} />
+      )}
     </View>
+    </LightboxCtx.Provider>
   );
 }
 

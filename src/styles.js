@@ -229,6 +229,29 @@ export const S = StyleSheet.create({
   logCancelBtn: { padding: 12, alignItems: 'center' },
   logCancelBtnText: { color: COLORS.muted, fontSize: 14 },
 
+  // === Lightbox ===
+  lightboxOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: 20,
+    zIndex: 2000,
+  },
+  lightboxClose: {
+    position: 'absolute', top: 50, right: 20,
+    width: 44, height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 1,
+  },
+  lightboxCloseText: { color: '#fff', fontSize: 22, fontWeight: '300' },
+  lightboxCaption: {
+    position: 'absolute', bottom: 40, left: 20, right: 20,
+    color: '#fff', textAlign: 'center',
+    fontSize: 15, fontWeight: '500',
+  },
+
   // === Modale confirm ===
   modalOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
