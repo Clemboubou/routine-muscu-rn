@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "routine-muscu-rn",
+    "name": "Routine",
     "slug": "routine-muscu-rn",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,15 +12,13 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.clemboubou.routinemuscu"
     },
     "web": {
       "favicon": "./assets/favicon.png"
