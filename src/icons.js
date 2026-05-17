@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, View } from 'react-native';
 import Svg, { Path, Circle, Rect, Ellipse } from 'react-native-svg';
-import { EXO_IMAGES } from './exoImages';
+import { EXO_IMAGES, EXO_RATIOS } from './exoImages';
 
 const sw = 1.5;
 
@@ -59,8 +59,7 @@ export function ExoThumb({ slug, size = 56, iconSize = null }) {
 export function ExoHero({ slug, borderRadius = 12 }) {
   const img = EXO_IMAGES[slug];
   if (img) {
-    const meta = Image.resolveAssetSource(img);
-    const ratio = meta && meta.width && meta.height ? meta.width / meta.height : 1.5;
+    const ratio = EXO_RATIOS[slug] || 1.5;
     return (
       <Image
         source={img}

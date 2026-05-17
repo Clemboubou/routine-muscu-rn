@@ -1,6 +1,29 @@
 // Static require map — RN's bundler exige des chemins littéraux à la compilation.
 // Si une image manque, supprime simplement sa ligne ici → fallback SVG automatique.
 
+// Ratios w/h hardcodés (mesurés une fois au scan PowerShell).
+// Sert au composant ExoHero pour dimensionner la boîte au pixel près sans appel runtime.
+// (Image.resolveAssetSource() n'existe pas sur react-native-web.)
+export const EXO_RATIOS = {
+  'velo': 800 / 450,
+  'leg-press': 800 / 450,
+  'leg-curl': 800 / 450,
+  'leg-extension': 800 / 450,
+  'hip-thrust': 800 / 450,
+  'calf': 384 / 448,
+  'abductor': 800 / 450,
+  'plank': 800 / 533,
+  'lat-pulldown': 512 / 384,
+  'chest-press': 800 / 533,
+  'seated-row': 800 / 538,
+  'rear-delt': 793 / 800,
+  'triceps': 282 / 800,
+  'biceps': 284 / 175,
+  'elliptical': 800 / 754,
+  'stretch': 800 / 450,
+  'walk': 800 / 450,
+};
+
 export const EXO_IMAGES = {
   'velo': require('../assets/exercises/velo.png'),
   'leg-press': require('../assets/exercises/leg-press.png'),
