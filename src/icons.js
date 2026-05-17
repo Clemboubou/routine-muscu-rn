@@ -41,7 +41,7 @@ export function ExoIcon({ slug, size = 32, color = '#111' }) {
   return <Render size={size} color={color} />;
 }
 
-// Vignette carrée pour les listes : crop léger acceptable à petite taille.
+// Vignette carrée de liste : cover, crop léger acceptable à 56px.
 export function ExoThumb({ slug, size = 56, iconSize = null }) {
   const img = EXO_IMAGES[slug];
   if (img) {
@@ -64,7 +64,7 @@ export function ExoHero({ slug, borderRadius = 12 }) {
       <Image
         source={img}
         style={{ width: '100%', aspectRatio: ratio, borderRadius }}
-        resizeMode="cover"
+        resizeMode="contain"
       />
     );
   }

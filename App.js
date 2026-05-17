@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { S, COLORS } from './src/styles';
 import { MORNING, EVENING, SESSIONS, OFF_DAY } from './src/data';
 import { ExoIcon, ExoThumb, ExoHero } from './src/icons';
-import { loadHistory, lastMaxFor, addSetEntry } from './src/storage';
+import {
+  loadHistory, lastMaxFor,
+  loadDraft, saveDraft, clearDraft, commitSession,
+} from './src/storage';
 
 function todayLabel() {
   return new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -20,7 +23,7 @@ function TimelineRow({ time, text, last }) {
   );
 }
 
-function ExoRow({ exo, last, onPress, lastMax, clickable = true }) {
+function ExoRow({ exo, last, onPress, lastMax, clickable = false }) {
   const content = (
     <View style={[S.exoRow, last && S.exoRowLast]}>
       <View style={S.exoThumb}>
@@ -36,28 +39,27 @@ function ExoRow({ exo, last, onPress, lastMax, clickable = true }) {
     </View>
   );
   if (!clickable) return content;
-  return (
-    <Pressable onPress={onPress} android_ripple={{ color: COLORS.soft }}>
-      {content}
-    </Pressable>
-  );
+  return <Pressable onPress={onPress} android_ripple={{ color: COLORS.soft }}>{content}</Pressable>;
 }
 
-function TodayScreen({ onOpenExo, historyVersion }) {
-  const session = SESSIONS[new Date().getDay()];
+// ============ TODAY ============
+
+function TodayScreen({ onStartSession, draftSessionDay }) {
+  const todayDay = new Date().getDay();
+  const session = SESSIONS[todayDay];
   const [maxes, setMaxes] = useState({});
 
   useEffect(() => {
-    const exos = session ? session.exos : [];
+    if (!session) return;
     (async () => {
       const m = {};
-      for (const ex of exos) {
+      for (const ex of session.exos) {
         const last = await lastMaxFor(ex.slug);
         if (last) m[ex.slug] = last.max;
       }
       setMaxes(m);
     })();
-  }, [session, historyVersion]);
+  }, [session]);
 
   return (
     <ScrollView contentContainerStyle={S.scroll}>
@@ -73,17 +75,25 @@ function TodayScreen({ onOpenExo, historyVersion }) {
           <Text style={S.sectionTitle}>Séance — {session.title}</Text>
           <View style={S.card}>
             {session.exos.map((ex, i) => (
-              <ExoRow key={i} exo={ex} last={i === session.exos.length - 1}
-                onPress={() => onOpenExo(ex, session.title)} lastMax={maxes[ex.slug]} />
+              <ExoRow key={i} exo={ex} last={i === session.exos.length - 1} lastMax={maxes[ex.slug]} />
             ))}
           </View>
+          <Pressable
+            style={S.logFinishBtn}
+            onPress={() => onStartSession(todayDay)}
+            android_ripple={{ color: '#333' }}
+          >
+            <Text style={S.logFinishBtnText}>
+              {draftSessionDay === todayDay ? 'Reprendre la séance en cours' : 'Commencer la séance'}
+            </Text>
+          </Pressable>
         </>
       ) : (
         <>
           <Text style={S.sectionTitle}>{OFF_DAY.title}</Text>
           <View style={S.card}>
             {OFF_DAY.items.map((ex, i) => (
-              <ExoRow key={i} exo={ex} last={i === OFF_DAY.items.length - 1} clickable={false} />
+              <ExoRow key={i} exo={ex} last={i === OFF_DAY.items.length - 1} />
             ))}
           </View>
         </>
@@ -99,50 +109,284 @@ function TodayScreen({ onOpenExo, historyVersion }) {
   );
 }
 
-function RoutineScreen({ onOpenExo, historyVersion }) {
-  const [maxes, setMaxes] = useState({});
+// ============ TRAINING PICKER ============
 
-  useEffect(() => {
-    (async () => {
-      const m = {};
-      const seen = new Set();
-      for (const di of [1, 3, 5]) {
-        for (const ex of SESSIONS[di].exos) {
-          if (seen.has(ex.slug)) continue;
-          seen.add(ex.slug);
-          const last = await lastMaxFor(ex.slug);
-          if (last) m[ex.slug] = last.max;
-        }
-      }
-      setMaxes(m);
-    })();
-  }, [historyVersion]);
-
+function TrainingPickerScreen({ onPickSession, draftSessionDay }) {
   return (
     <ScrollView contentContainerStyle={S.scroll}>
+      <Text style={S.sectionTitle}>Choisis ta séance</Text>
       {[1, 3, 5].map(di => {
         const s = SESSIONS[di];
+        const inProgress = draftSessionDay === di;
+        const exosList = s.exos.filter(e => e.sets).map(e => e.name).join(' · ');
         return (
-          <View key={di}>
-            <Text style={S.sectionTitle}>{s.day} — {s.title}</Text>
-            <View style={S.card}>
-              {s.exos.map((ex, i) => (
-                <ExoRow key={i} exo={ex} last={i === s.exos.length - 1}
-                  onPress={() => onOpenExo(ex, s.title)} lastMax={maxes[ex.slug]} />
-              ))}
+          <Pressable
+            key={di}
+            onPress={() => onPickSession(di)}
+            android_ripple={{ color: COLORS.soft }}
+          >
+            <View style={[S.pickerCard, inProgress && S.pickerInProgress]}>
+              {inProgress && <Text style={S.pickerBadge}>EN COURS</Text>}
+              <Text style={S.pickerDay}>{s.day}</Text>
+              <Text style={S.pickerTitle}>{s.title}</Text>
+              <Text style={S.pickerExos}>{exosList}</Text>
+              <Text style={S.pickerCta}>
+                {inProgress ? 'Reprendre →' : 'Commencer →'}
+              </Text>
             </View>
-          </View>
+          </Pressable>
         );
       })}
-      <Text style={S.sectionTitle}>Mardi · Jeudi · Week-end</Text>
-      <View style={S.card}>
-        {OFF_DAY.items.map((ex, i) => (
-          <ExoRow key={i} exo={ex} last={i === OFF_DAY.items.length - 1} clickable={false} />
-        ))}
-      </View>
     </ScrollView>
   );
 }
+
+// ============ SESSION LOG (saisie groupée) ============
+
+function SessionLogScreen({ sessionDay, onExit, onSaved, insets }) {
+  const session = SESSIONS[sessionDay];
+  const exosToLog = session.exos.filter(e => e.sets);
+
+  const [weights, setWeights] = useState(null);
+  const [notes, setNotes] = useState({});
+  const [globalNote, setGlobalNote] = useState('');
+  const [lastMaxes, setLastMaxes] = useState({});
+  const [confirm, setConfirm] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const initialized = useRef(false);
+
+  // Init : charger brouillon ou créer structure vide
+  useEffect(() => {
+    (async () => {
+      const draft = await loadDraft();
+      if (draft && draft.sessionDay === sessionDay) {
+        setWeights(draft.weights || {});
+        setNotes(draft.notes || {});
+        setGlobalNote(draft.globalNote || '');
+      } else {
+        const w = {};
+        exosToLog.forEach(ex => { w[ex.slug] = Array(ex.sets).fill(''); });
+        setWeights(w);
+      }
+      const m = {};
+      for (const ex of exosToLog) {
+        const last = await lastMaxFor(ex.slug);
+        if (last) m[ex.slug] = last.max;
+      }
+      setLastMaxes(m);
+      initialized.current = true;
+    })();
+  }, [sessionDay]);
+
+  // Auto-save brouillon à chaque changement
+  useEffect(() => {
+    if (!initialized.current || weights === null) return;
+    saveDraft({
+      sessionDay, sessionTitle: session.title,
+      startedAt: new Date().toISOString(),
+      weights, notes, globalNote,
+    });
+  }, [weights, notes, globalNote]);
+
+  if (weights === null) {
+    return <View style={{ flex: 1 }}><Text style={S.empty}>Chargement…</Text></View>;
+  }
+
+  const filled = exosToLog.filter(ex => (weights[ex.slug] || []).some(w => w)).length;
+  const total = exosToLog.length;
+
+  const setWeight = (slug, idx, v) => {
+    setWeights(prev => {
+      const arr = [...(prev[slug] || [])];
+      arr[idx] = v.replace(',', '.');
+      return { ...prev, [slug]: arr };
+    });
+  };
+
+  const setNote = (slug, v) => {
+    setNotes(prev => ({ ...prev, [slug]: v }));
+  };
+
+  const onFinish = async () => {
+    const exos = exosToLog
+      .filter(ex => (weights[ex.slug] || []).some(w => w))
+      .map(ex => ({
+        slug: ex.slug, name: ex.name,
+        weights: weights[ex.slug].map(w => w || ''),
+      }));
+    const noteParts = [];
+    Object.entries(notes).forEach(([slug, n]) => {
+      if (n && n.trim()) {
+        const exo = exosToLog.find(e => e.slug === slug);
+        noteParts.push(`${exo ? exo.name : slug}: ${n.trim()}`);
+      }
+    });
+    if (globalNote.trim()) noteParts.push(`Général: ${globalNote.trim()}`);
+    await commitSession({
+      sessionTitle: session.title, exos,
+      notes: noteParts.join('\n'),
+    });
+    await clearDraft();
+    setConfirm(false);
+    onSaved();
+  };
+
+  const onDiscard = async () => {
+    await clearDraft();
+    setConfirmDiscard(false);
+    onExit();
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={S.logHeader}>
+        <Pressable onPress={onExit} style={{ alignSelf: 'flex-start', marginBottom: 6 }}>
+          <Text style={{ color: COLORS.muted, fontSize: 14 }}>← Quitter</Text>
+        </Pressable>
+        <Text style={S.logTitle}>{session.title}</Text>
+        <Text style={S.logProgress}>
+          {filled}/{total} exos remplis · brouillon sauvegardé automatiquement
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+        {session.exos.map((ex, i) => (
+          <ExoLogBlock
+            key={i}
+            exo={ex}
+            weights={weights[ex.slug] || []}
+            note={notes[ex.slug] || ''}
+            lastMax={lastMaxes[ex.slug]}
+            onWeightChange={(idx, v) => setWeight(ex.slug, idx, v)}
+            onNoteChange={(v) => setNote(ex.slug, v)}
+          />
+        ))}
+
+        <Text style={S.sectionTitle}>Notes générales</Text>
+        <TextInput
+          style={[S.logExoNote, { minHeight: 80 }]}
+          value={globalNote}
+          onChangeText={setGlobalNote}
+          placeholder="Énergie, douleur, contexte..."
+          placeholderTextColor={COLORS.muted}
+          multiline
+        />
+
+        <Pressable onPress={() => setConfirmDiscard(true)} style={S.logCancelBtn}>
+          <Text style={S.logCancelBtnText}>Abandonner la séance (efface le brouillon)</Text>
+        </Pressable>
+      </ScrollView>
+
+      <View style={[S.logFooter, { paddingBottom: 12 + insets.bottom }]}>
+        <Pressable
+          style={S.logFinishBtn}
+          onPress={() => setConfirm(true)}
+          android_ripple={{ color: '#333' }}
+        >
+          <Text style={S.logFinishBtnText}>Terminer la séance ({filled}/{total})</Text>
+        </Pressable>
+      </View>
+
+      {confirm && (
+        <ConfirmModal
+          title="Terminer la séance ?"
+          text={filled < total
+            ? `Tu as rempli ${filled} exos sur ${total}. Tu peux quand même enregistrer — les exos vides ne seront pas sauvés.`
+            : `${filled} exos remplis. Prêt à enregistrer ?`}
+          cancelLabel="Continuer la séance"
+          confirmLabel="Enregistrer"
+          onCancel={() => setConfirm(false)}
+          onConfirm={onFinish}
+        />
+      )}
+      {confirmDiscard && (
+        <ConfirmModal
+          title="Abandonner la séance ?"
+          text="Le brouillon sera effacé. Rien ne sera enregistré dans l'historique."
+          cancelLabel="Garder"
+          confirmLabel="Abandonner"
+          onCancel={() => setConfirmDiscard(false)}
+          onConfirm={onDiscard}
+        />
+      )}
+    </View>
+  );
+}
+
+function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange }) {
+  const isCardio = !!exo.cardio;
+  return (
+    <View style={S.logExoBlock}>
+      <View style={S.logExoHeader}>
+        <View style={S.exoThumb}>
+          <ExoThumb slug={exo.slug} iconSize={28} />
+        </View>
+        <Text style={S.logExoName}>{exo.name}</Text>
+      </View>
+      <Text style={S.logExoMeta}>{exo.meta}</Text>
+      {exo.warn && <Text style={S.logExoWarn}>⚠ {exo.warn}</Text>}
+      {lastMax != null && (
+        <Text style={[S.logExoMeta, { color: COLORS.ok }]}>Dernier max : {lastMax} kg</Text>
+      )}
+
+      {isCardio ? (
+        <Text style={S.cardioBadge}>Cardio · pas de poids à saisir</Text>
+      ) : (
+        <>
+          <View style={S.logSetsRow}>
+            {weights.map((w, i) => {
+              const filled = !!w;
+              return (
+                <View key={i} style={S.logSetCell}>
+                  <Text style={S.logSetLabel}>S{i + 1}</Text>
+                  <TextInput
+                    style={[S.logSetInput, filled && S.logSetInputFilled]}
+                    value={w}
+                    onChangeText={(v) => onWeightChange(i, v)}
+                    placeholder="kg"
+                    placeholderTextColor={COLORS.muted}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              );
+            })}
+          </View>
+          <TextInput
+            style={S.logExoNote}
+            value={note}
+            onChangeText={onNoteChange}
+            placeholder="Note exo (optionnel)"
+            placeholderTextColor={COLORS.muted}
+            multiline
+          />
+        </>
+      )}
+    </View>
+  );
+}
+
+// ============ CONFIRM MODAL ============
+
+function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConfirm }) {
+  return (
+    <View style={S.modalOverlay}>
+      <View style={S.modalCard}>
+        <Text style={S.modalTitle}>{title}</Text>
+        <Text style={S.modalText}>{text}</Text>
+        <View style={S.modalBtns}>
+          <Pressable style={S.modalBtnGhost} onPress={onCancel} android_ripple={{ color: COLORS.soft }}>
+            <Text style={S.modalBtnGhostText}>{cancelLabel}</Text>
+          </Pressable>
+          <Pressable style={S.modalBtnPrimary} onPress={onConfirm} android_ripple={{ color: '#333' }}>
+            <Text style={S.modalBtnPrimaryText}>{confirmLabel}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ============ HISTORY ============
 
 function HistoryScreen({ historyVersion }) {
   const [list, setList] = useState([]);
@@ -188,136 +432,68 @@ function HistoryScreen({ historyVersion }) {
   );
 }
 
-function ExoDetail({ exo, sessionTitle, onBack, onSaved }) {
-  const nbSets = exo.sets || 0;
-  const isCardio = !!exo.cardio;
-  const [weights, setWeights] = useState(Array(nbSets).fill(''));
-  const [notes, setNotes] = useState('');
-  const [lastMax, setLastMax] = useState(null);
-  const [toast, setToast] = useState(null);
-
-  useEffect(() => { lastMaxFor(exo.slug).then(setLastMax); }, [exo.slug]);
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 1800);
-  };
-
-  const onSave = async () => {
-    if (!weights.some(w => w)) { showToast("Saisis au moins un poids"); return; }
-    await addSetEntry(sessionTitle, exo.slug, exo.name, weights, notes.trim());
-    showToast("Enregistré");
-    setTimeout(() => onSaved(), 300);
-  };
-
-  return (
-    <ScrollView contentContainerStyle={S.scroll} keyboardShouldPersistTaps="handled">
-      <Pressable onPress={onBack} style={S.backBtn} android_ripple={{ color: COLORS.soft }}>
-        <Text style={S.backBtnText}>← Retour</Text>
-      </Pressable>
-
-      <View style={{ marginBottom: 16 }}>
-        <ExoHero slug={exo.slug} />
-      </View>
-
-      <Text style={S.detailName}>{exo.name}</Text>
-      <Text style={S.detailMeta}>{exo.meta}</Text>
-      {lastMax && <Text style={S.detailMeta}>Dernier max enregistré : {lastMax.max} kg</Text>}
-      {exo.warn && <Text style={S.detailWarn}>⚠ {exo.warn}</Text>}
-
-      {isCardio ? (
-        <Text style={S.empty}>Exercice cardio / non chargé — pas de poids à saisir.</Text>
-      ) : (
-        <>
-          <View style={{ marginTop: 12 }}>
-            {weights.map((w, i) => (
-              <View key={i} style={S.setRow}>
-                <Text style={S.setLabel}>Série {i + 1}</Text>
-                <TextInput
-                  style={S.setInput}
-                  value={w}
-                  onChangeText={(v) => {
-                    const next = [...weights]; next[i] = v.replace(',', '.'); setWeights(next);
-                  }}
-                  placeholder="kg"
-                  placeholderTextColor={COLORS.muted}
-                  keyboardType="decimal-pad"
-                  returnKeyType="next"
-                />
-              </View>
-            ))}
-          </View>
-          <TextInput
-            style={S.notes}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Notes (ressenti, ajustements...)"
-            placeholderTextColor={COLORS.muted}
-            multiline
-          />
-          <Pressable onPress={onSave} style={S.saveBtn} android_ripple={{ color: '#333' }}>
-            <Text style={S.saveBtnText}>Enregistrer cette série</Text>
-          </Pressable>
-        </>
-      )}
-
-      {toast && (
-        <View style={S.toast}><Text style={S.toastText}>{toast}</Text></View>
-      )}
-    </ScrollView>
-  );
-}
+// ============ SHELL ============
 
 const TABS = [
   { key: 'today', label: "Aujourd'hui" },
-  { key: 'routine', label: 'Routine' },
+  { key: 'training', label: 'Entraînement' },
   { key: 'history', label: 'Historique' },
 ];
 
 function Shell() {
   const [tab, setTab] = useState('today');
-  const [detail, setDetail] = useState(null);
+  const [sessionMode, setSessionMode] = useState(null); // null ou dayIdx (1/3/5)
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [draftSessionDay, setDraftSessionDay] = useState(null);
   const insets = useSafeAreaInsets();
 
-  const openExo = useCallback((exo, sessionTitle) => setDetail({ exo, sessionTitle }), []);
-  const closeExo = useCallback(() => setDetail(null), []);
-  const onSaved = useCallback(() => {
+  // Charger info brouillon (pour afficher "EN COURS" sur la séance correspondante)
+  useEffect(() => {
+    (async () => {
+      const d = await loadDraft();
+      setDraftSessionDay(d ? d.sessionDay : null);
+    })();
+  }, [historyVersion, sessionMode]);
+
+  const startSession = useCallback((dayIdx) => setSessionMode(dayIdx), []);
+  const exitSession = useCallback(() => setSessionMode(null), []);
+  const sessionSaved = useCallback(() => {
     setHistoryVersion(v => v + 1);
-    setDetail(null);
+    setSessionMode(null);
+    setTab('history');
   }, []);
 
   let title;
-  if (detail) title = detail.exo.name;
+  if (sessionMode != null) title = SESSIONS[sessionMode].title;
   else if (tab === 'today') title = "Aujourd'hui";
-  else if (tab === 'routine') title = 'Routine complète';
+  else if (tab === 'training') title = 'Entraînement';
   else title = 'Historique';
 
   return (
-    <View style={[S.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[S.root, { paddingTop: insets.top, paddingBottom: sessionMode != null ? 0 : insets.bottom }]}>
       <View style={S.topbar}>
         <Text style={S.topbarTitle}>{title}</Text>
         <Text style={S.topbarDate}>{todayLabel()}</Text>
       </View>
 
       <View style={{ flex: 1 }}>
-        {detail ? (
-          <ExoDetail
-            exo={detail.exo}
-            sessionTitle={detail.sessionTitle}
-            onBack={closeExo}
-            onSaved={onSaved}
+        {sessionMode != null ? (
+          <SessionLogScreen
+            sessionDay={sessionMode}
+            onExit={exitSession}
+            onSaved={sessionSaved}
+            insets={insets}
           />
         ) : tab === 'today' ? (
-          <TodayScreen onOpenExo={openExo} historyVersion={historyVersion} />
-        ) : tab === 'routine' ? (
-          <RoutineScreen onOpenExo={openExo} historyVersion={historyVersion} />
+          <TodayScreen onStartSession={startSession} draftSessionDay={draftSessionDay} />
+        ) : tab === 'training' ? (
+          <TrainingPickerScreen onPickSession={startSession} draftSessionDay={draftSessionDay} />
         ) : (
           <HistoryScreen historyVersion={historyVersion} />
         )}
       </View>
 
-      {!detail && (
+      {sessionMode == null && (
         <View style={S.tabs}>
           {TABS.map(t => (
             <Pressable

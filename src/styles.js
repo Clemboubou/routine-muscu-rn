@@ -137,6 +137,126 @@ export const S = StyleSheet.create({
     borderRadius: 6, fontStyle: 'italic',
   },
   empty: { textAlign: 'center', color: COLORS.muted, padding: 40, fontSize: 14 },
+
+  // === Picker Entraînement ===
+  pickerCard: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.line,
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 12,
+  },
+  pickerDay: { fontSize: 12, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '600' },
+  pickerTitle: { fontSize: 20, fontWeight: '600', color: COLORS.ink, marginTop: 2, marginBottom: 8 },
+  pickerExos: { fontSize: 13, color: COLORS.muted, lineHeight: 19 },
+  pickerCta: { fontSize: 13, fontWeight: '600', color: COLORS.ink, marginTop: 12 },
+  pickerInProgress: {
+    backgroundColor: '#fff7eb',
+    borderColor: '#f3d6a5',
+  },
+  pickerBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.warn,
+    color: COLORS.bg,
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 4,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+
+  // === Session Log ===
+  logHeader: {
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
+    borderBottomWidth: 1, borderColor: COLORS.line,
+  },
+  logTitle: { fontSize: 22, fontWeight: '700', color: COLORS.ink },
+  logProgress: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
+
+  logExoBlock: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.line,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+  },
+  logExoHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  logExoName: { fontSize: 15, fontWeight: '600', color: COLORS.ink, flex: 1 },
+  logExoMeta: { fontSize: 12, color: COLORS.muted, marginBottom: 8 },
+  logExoWarn: { fontSize: 12, color: COLORS.warn, marginBottom: 8 },
+
+  logSetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  logSetCell: { width: 70 },
+  logSetLabel: { fontSize: 11, color: COLORS.muted, marginBottom: 2, textAlign: 'center' },
+  logSetInput: {
+    fontSize: 16,
+    paddingVertical: 10, paddingHorizontal: 6,
+    borderWidth: 1, borderColor: COLORS.line,
+    borderRadius: 8,
+    backgroundColor: COLORS.soft,
+    color: COLORS.ink,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  logSetInputFilled: {
+    backgroundColor: '#f0f7f2',
+    borderColor: '#c8e2cf',
+    color: COLORS.ok,
+  },
+  logExoNote: {
+    fontSize: 13,
+    padding: 10, marginTop: 10,
+    borderWidth: 1, borderColor: COLORS.line, borderRadius: 8,
+    backgroundColor: COLORS.soft,
+    color: COLORS.ink,
+    minHeight: 38,
+    textAlignVertical: 'top',
+  },
+  cardioBadge: { fontSize: 12, color: COLORS.muted, fontStyle: 'italic', marginTop: 4 },
+
+  logFooter: {
+    borderTopWidth: 1, borderColor: COLORS.line,
+    backgroundColor: COLORS.bg,
+    padding: 12,
+  },
+  logFinishBtn: {
+    backgroundColor: COLORS.ink,
+    paddingVertical: 16, borderRadius: 10,
+    alignItems: 'center',
+  },
+  logFinishBtnText: { color: COLORS.bg, fontSize: 16, fontWeight: '700' },
+  logCancelBtn: { padding: 12, alignItems: 'center' },
+  logCancelBtnText: { color: COLORS.muted, fontSize: 14 },
+
+  // === Modale confirm ===
+  modalOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: 24, zIndex: 1000,
+  },
+  modalCard: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 14,
+    padding: 24,
+    width: '100%', maxWidth: 360,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.ink, marginBottom: 8 },
+  modalText: { fontSize: 14, color: COLORS.muted, marginBottom: 18, lineHeight: 20 },
+  modalBtns: { flexDirection: 'row', gap: 8 },
+  modalBtnGhost: {
+    flex: 1, paddingVertical: 12, borderRadius: 8,
+    borderWidth: 1, borderColor: COLORS.line,
+    alignItems: 'center',
+  },
+  modalBtnGhostText: { color: COLORS.ink, fontWeight: '600' },
+  modalBtnPrimary: {
+    flex: 1, paddingVertical: 12, borderRadius: 8,
+    backgroundColor: COLORS.ink,
+    alignItems: 'center',
+  },
+  modalBtnPrimaryText: { color: COLORS.bg, fontWeight: '600' },
   toast: {
     position: 'absolute', bottom: 90, alignSelf: 'center',
     backgroundColor: COLORS.ink, paddingHorizontal: 20, paddingVertical: 10,

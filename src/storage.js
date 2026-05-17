@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY = 'muscu-history-v1';
+const DRAFT_KEY = 'muscu-draft-v1';
 
 export async function loadHistory() {
   try {
@@ -27,6 +28,41 @@ export async function lastMaxFor(slug) {
   return null;
 }
 
+// === BROUILLON DE SÉANCE ===
+// Un seul brouillon actif à la fois (l'utilisateur fait une séance à la fois).
+// Persistance : survit à la fermeture de l'app, au reboot, à la batterie morte.
+
+export async function loadDraft() {
+  try {
+    const raw = await AsyncStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+export async function saveDraft(draft) {
+  await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+}
+
+export async function clearDraft() {
+  await AsyncStorage.removeItem(DRAFT_KEY);
+}
+
+// === COMMIT FINAL D'UNE SÉANCE ===
+// Convertit le brouillon en entrée d'historique au format attendu par HistoryScreen.
+
+export async function commitSession({ sessionTitle, exos, notes }) {
+  const h = await loadHistory();
+  const entry = {
+    date: new Date().toISOString(),
+    sessionTitle,
+    exos: exos.map(e => ({ slug: e.slug, name: e.name, weights: e.weights })),
+    notes: notes || '',
+  };
+  h.push(entry);
+  await saveHistory(h);
+}
+
+// === Legacy : saisie d'un seul exo (encore utilisé si tu touches un exo depuis Aujourd'hui) ===
 export async function addSetEntry(sessionTitle, slug, name, weights, notes) {
   const h = await loadHistory();
   const today = new Date().toISOString().slice(0, 10);
