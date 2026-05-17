@@ -41,15 +41,22 @@ export function ExoIcon({ slug, size = 32, color = '#111' }) {
   return <Render size={size} color={color} />;
 }
 
-// Vignette carrée de liste : cover, crop léger acceptable à 56px.
-export function ExoThumb({ slug, size = 56, iconSize = null }) {
+// Vignette : largeur variable selon le ratio naturel (hauteur 56), pas de crop.
+// `maxW` clamp les images très landscape pour qu'elles ne débordent pas du conteneur.
+export function ExoThumb({ slug, height = 56, maxW = 88, iconSize = null }) {
   const img = EXO_IMAGES[slug];
   if (img) {
-    return <Image source={img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />;
+    const ratio = EXO_RATIOS[slug] || 1;
+    const naturalW = height * ratio;
+    if (naturalW <= maxW) {
+      return <Image source={img} style={{ height, aspectRatio: ratio }} resizeMode="cover" />;
+    }
+    // Image trop large → on cap à maxW, contain pour pas crop
+    return <Image source={img} style={{ width: maxW, height }} resizeMode="contain" />;
   }
-  const sz = iconSize != null ? iconSize : Math.round(size * 0.55);
+  const sz = iconSize != null ? iconSize : Math.round(height * 0.55);
   return (
-    <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: height, height, alignItems: 'center', justifyContent: 'center' }}>
       <ExoIcon slug={slug} size={sz} />
     </View>
   );

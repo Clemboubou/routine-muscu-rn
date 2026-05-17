@@ -72,11 +72,15 @@ export const S = StyleSheet.create({
     gap: 12,
   },
   exoRowLast: { borderBottomWidth: 0 },
+  // Colonne fixe pour aligner le texte après la vignette (peu importe sa largeur)
+  exoThumbCol: {
+    width: 88, height: 56,
+    alignItems: 'center', justifyContent: 'center',
+  },
   exoThumb: {
-    width: 56, height: 56, borderRadius: 8,
+    height: 56, borderRadius: 8,
     backgroundColor: COLORS.soft,
     borderWidth: 1, borderColor: COLORS.line,
-    alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden',
   },
   exoInfo: { flex: 1 },
