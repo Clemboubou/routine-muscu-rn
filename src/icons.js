@@ -41,22 +41,37 @@ export function ExoIcon({ slug, size = 32, color = '#111' }) {
   return <Render size={size} color={color} />;
 }
 
-// Vignette : largeur variable selon le ratio naturel (hauteur 56), pas de crop.
-// `maxW` clamp les images très landscape pour qu'elles ne débordent pas du conteneur.
+// Vignette autonome : retourne sa propre boîte bordée à dimensions explicites.
+// On NE compte PAS sur `aspectRatio` (cassé sur react-native-web pour <Image>),
+// on calcule width = height × ratio, clampée à maxW.
 export function ExoThumb({ slug, height = 56, maxW = 88, iconSize = null }) {
   const img = EXO_IMAGES[slug];
+  const boxStyle = {
+    height,
+    borderRadius: 8,
+    backgroundColor: '#fafafa',
+    borderWidth: 1, borderColor: '#ececec',
+    overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+  };
   if (img) {
     const ratio = EXO_RATIOS[slug] || 1;
     const naturalW = height * ratio;
-    if (naturalW <= maxW) {
-      return <Image source={img} style={{ height, aspectRatio: ratio }} resizeMode="cover" />;
-    }
-    // Image trop large → on cap à maxW, contain pour pas crop
-    return <Image source={img} style={{ width: maxW, height }} resizeMode="contain" />;
+    const w = Math.min(naturalW, maxW);
+    const useContain = naturalW > maxW;
+    return (
+      <View style={[boxStyle, { width: w }]}>
+        <Image
+          source={img}
+          style={{ width: w, height }}
+          resizeMode={useContain ? 'contain' : 'cover'}
+        />
+      </View>
+    );
   }
   const sz = iconSize != null ? iconSize : Math.round(height * 0.55);
   return (
-    <View style={{ width: height, height, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={[boxStyle, { width: height }]}>
       <ExoIcon slug={slug} size={sz} />
     </View>
   );

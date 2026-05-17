@@ -33,9 +33,7 @@ function ExoRow({ exo, last, lastMax }) {
     <View style={[S.exoRow, last && S.exoRowLast]}>
       <Pressable onPress={() => openLightbox(exo.slug)} android_ripple={{ color: COLORS.soft, borderless: true }}>
         <View style={S.exoThumbCol}>
-          <View style={S.exoThumb}>
-            <ExoThumb slug={exo.slug} iconSize={32} />
-          </View>
+          <ExoThumb slug={exo.slug} iconSize={32} />
         </View>
       </Pressable>
       <View style={S.exoInfo}>
@@ -327,12 +325,10 @@ function ExoLogBlock({ exo, weights, note, lastMax, onWeightChange, onNoteChange
       <View style={S.logExoHeader}>
         <Pressable onPress={() => openLightbox(exo.slug)} android_ripple={{ color: COLORS.soft, borderless: true }}>
           <View style={S.exoThumbCol}>
-            <View style={S.exoThumb}>
-              <ExoThumb slug={exo.slug} iconSize={28} />
-            </View>
+            <ExoThumb slug={exo.slug} iconSize={28} />
           </View>
         </Pressable>
-        <Text style={S.logExoName}>{exo.name}</Text>
+        <Text style={S.logExoName} numberOfLines={2}>{exo.name}</Text>
       </View>
       <Text style={S.logExoMeta}>{exo.meta}</Text>
       {exo.warn && <Text style={S.logExoWarn}>⚠ {exo.warn}</Text>}
