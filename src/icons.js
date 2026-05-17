@@ -47,7 +47,7 @@ export function ExoThumb({ slug, size = 32, fill = false, iconSize = null }) {
   const img = EXO_IMAGES[slug];
   const dim = fill ? { width: '100%', height: '100%' } : { width: size, height: size };
   if (img) {
-    return <Image source={img} style={dim} resizeMode="cover" />;
+    return <Image source={img} style={dim} resizeMode="contain" />;
   }
   const sz = iconSize != null ? iconSize : (fill ? 64 : Math.round(size * 0.55));
   return (
