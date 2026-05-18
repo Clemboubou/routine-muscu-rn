@@ -30,6 +30,12 @@ function todayLabel() {
   return new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
+// Date locale au format YYYY-MM-DD (évite le bug UTC où une activité de 23h
+// le lundi soir se range au mardi en ISO).
+function localIsoDate(d = new Date()) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function TimelineRow({ time, text, last }) {
   return (
     <View style={[S.timelineRow, last && S.timelineRowLast]}>
@@ -436,96 +442,32 @@ function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConf
 
 // ============ STRAVA SECTION (dans Marche) ============
 
-function StravaSection({ onSyncedWalk }) {
-  const [hasToken, setHasToken] = useState(false);
+function StravaConnectCard({ onConnected }) {
   const [busy, setBusy] = useState(false);
-  const [activities, setActivities] = useState(null);
-  const [msg, setMsg] = useState(null);
-
-  const refresh = async () => setHasToken(!!(await Strava.loadToken()));
-  useEffect(() => { refresh(); }, []);
-
-  const flash = (m, ms = 2200) => { setMsg(m); setTimeout(() => setMsg(null), ms); };
-
+  const [err, setErr] = useState(null);
   const onConnect = async () => {
-    setBusy(true);
+    setBusy(true); setErr(null);
     const r = await Strava.connect();
     setBusy(false);
-    if (r.ok) { flash('Connecté à Strava'); await refresh(); }
-    else flash(r.error);
+    if (r.ok) onConnected();
+    else setErr(r.error);
   };
-
-  const onSync = async () => {
-    setBusy(true);
-    setActivities(null);
-    const r = await Strava.fetchTodayWalkActivities();
-    setBusy(false);
-    if (!r.ok) { flash(r.error); return; }
-    setActivities(r.activities);
-    if (r.activities.length === 0) flash('Aucune marche trouvée aujourd\'hui');
-  };
-
-  const onImportActivity = async (a) => {
-    await onSyncedWalk(a);
-    flash('Marche importée');
-    setActivities(null);
-  };
-
-  const onDisconnect = async () => {
-    await Strava.disconnect();
-    setActivities(null);
-    await refresh();
-    flash('Déconnecté');
-  };
-
   return (
     <View style={S.card}>
       <Text style={[S.sectionTitle, { marginTop: 0 }]}>Strava</Text>
-
-      {!hasToken ? (
-        <Pressable
-          style={[S.walkHeroBtn, { backgroundColor: '#fc4c02' }]}
-          onPress={onConnect}
-          disabled={busy}
-        >
-          <Text style={[S.walkHeroBtnText, { color: '#fff' }]}>
-            {busy ? '…' : 'Connecter à Strava'}
-          </Text>
-        </Pressable>
-      ) : (
-        <>
-          <Text style={[S.exoMeta, { marginBottom: 8, color: COLORS.ok }]}>✓ Connecté</Text>
-          <Pressable
-            style={[S.walkHeroBtn, { backgroundColor: COLORS.ink }]}
-            onPress={onSync}
-            disabled={busy}
-          >
-            <Text style={S.walkHeroBtnText}>{busy ? 'Sync…' : 'Synchroniser aujourd\'hui'}</Text>
-          </Pressable>
-          {activities && activities.length > 0 && (
-            <View style={{ marginTop: 12 }}>
-              {activities.map(a => (
-                <Pressable key={a.id} style={S.pickerCard} onPress={() => onImportActivity(a)}>
-                  <Text style={S.pickerTitle}>{a.name}</Text>
-                  <Text style={S.exoMeta}>
-                    {formatDuration(a.duration_min)} · {a.distance_km} km · +{a.elev_m} m
-                    {a.kcal ? ` · ${a.kcal} kcal` : ''}
-                    {a.hr_avg ? ` · FC moy ${a.hr_avg}` : ''}
-                  </Text>
-                  <Text style={S.pickerCta}>Importer comme marche du jour →</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-          <Pressable style={S.logCancelBtn} onPress={onDisconnect}>
-            <Text style={S.logCancelBtnText}>Déconnecter</Text>
-          </Pressable>
-        </>
-      )}
-
-      {msg && (
-        <View style={[S.toast, { bottom: 100 }]}><Text style={S.toastText}>{msg}</Text></View>
-      )}
+      <Text style={[S.exoMeta, { marginBottom: 12 }]}>
+        Connecte Strava pour que tes marches Coros soient importées automatiquement.
+      </Text>
+      <Pressable
+        style={[S.walkHeroBtn, { backgroundColor: '#fc4c02' }]}
+        onPress={onConnect}
+        disabled={busy}
+      >
+        <Text style={[S.walkHeroBtnText, { color: '#fff' }]}>
+          {busy ? '…' : 'Connecter à Strava'}
+        </Text>
+      </Pressable>
+      {err && <Text style={[S.exoMeta, { color: COLORS.warn, marginTop: 8 }]}>{err}</Text>}
     </View>
   );
 }
@@ -606,25 +548,72 @@ function MarcheScreen({ refreshKey, onChanged }) {
   const [weightOpen, setWeightOpen] = useState(false);
   const [weightKg, setWeightKg] = useState('');
   const [toastMsg, setToastMsg] = useState(null);
+  const [stravaConnected, setStravaConnected] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
+  const flash = (m, ms = 2200) => { setToastMsg(m); setTimeout(() => setToastMsg(null), ms); };
+
+  const reload = async () => {
+    const s = await loadWalkStart();
+    if (s) setStartDate(s);
+    setWalkLog(await loadWalkLog());
+    setWeightLog(await loadWeightLog());
+    setStravaConnected(!!(await Strava.loadToken()));
+  };
+
+  useEffect(() => { reload(); }, [refreshKey]);
+
+  // Auto-sync silencieux à l'ouverture si Strava connecté
+  const autoSyncRef = useRef(false);
   useEffect(() => {
-    (async () => {
-      const s = await loadWalkStart();
-      if (s) setStartDate(s);
-      const log = await loadWalkLog();
-      setWalkLog(log);
-      const w = await loadWeightLog();
-      setWeightLog(w);
-    })();
-  }, [refreshKey]);
+    if (autoSyncRef.current || !stravaConnected) return;
+    autoSyncRef.current = true;
+    syncStrava({ silent: true });
+  }, [stravaConnected]);
 
-  const flash = (msg) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 1800);
+  const syncStrava = async ({ silent = false } = {}) => {
+    if (!silent) setSyncing(true);
+    const r = await Strava.fetchTodayWalkActivities();
+    if (!silent) setSyncing(false);
+    if (!r.ok) {
+      if (!silent) flash(r.error);
+      return;
+    }
+    if (r.activities.length === 0) {
+      if (!silent) flash('Aucune marche Strava aujourd\'hui');
+      return;
+    }
+    const todayIsoLocal = localIsoDate();
+    const log = await loadWalkLog();
+    const prev = log.find(e => e.date === todayIsoLocal);
+    const imported = new Set(prev?.stravaIds || []);
+    const toImport = r.activities.filter(a => !imported.has(a.id));
+    if (toImport.length === 0) {
+      if (!silent) flash('Déjà à jour');
+      return;
+    }
+    const addMin = toImport.reduce((s, a) => s + a.duration_min, 0);
+    const addKm = toImport.reduce((s, a) => s + a.distance_km, 0);
+    const addElev = toImport.reduce((s, a) => s + a.elev_m, 0);
+    const addKcal = toImport.reduce((s, a) => s + (a.kcal || 0), 0);
+    const hrAvgs = toImport.map(a => a.hr_avg).filter(Boolean);
+    const avgHr = hrAvgs.length ? Math.round(hrAvgs.reduce((s, v) => s + v, 0) / hrAvgs.length) : (prev?.hr_avg || null);
+    await logWalk({
+      date: todayIsoLocal,
+      minutes: (prev?.minutes || 0) + addMin,
+      km: +((prev?.km || 0) + addKm).toFixed(2),
+      elev: (prev?.elev || 0) + addElev,
+      kcal: (prev?.kcal || 0) + addKcal,
+      hr_avg: avgHr,
+      stravaIds: [...imported, ...toImport.map(a => a.id)],
+    });
+    setWalkLog(await loadWalkLog());
+    onChanged && onChanged();
+    flash(`+${formatDuration(addMin)} sync Strava`);
   };
 
   const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = localIsoDate(today);
   const weekNum = currentWeekNumber(startDate, today);
   const week = weekNum ? getWeek(weekNum) : null;
   const block = week ? getBlock(week.block) : null;
@@ -644,7 +633,7 @@ function MarcheScreen({ refreshKey, onChanged }) {
   });
   const targetTotalMin = weekNum ? weekTotalMinutes(weekNum) : 0;
   const doneTotalMin = weekDays.reduce((sum, d) => {
-    const iso = d.toISOString().slice(0, 10);
+    const iso = localIsoDate(d);
     const entry = walkLog.find(e => e.date === iso);
     return sum + (entry ? entry.minutes : 0);
   }, 0);
@@ -683,22 +672,59 @@ function MarcheScreen({ refreshKey, onChanged }) {
     );
   }
 
+  const isDone = !!(todayLogged && todayLogged.minutes > 0);
+
   return (
     <>
       <ScrollView contentContainerStyle={S.scroll}>
-        {/* Aujourd'hui */}
-        <Text style={S.sectionTitle}>Aujourd'hui · {tgt.dayLabel}</Text>
-        <View style={S.walkHero}>
-          <Text style={S.walkHeroDay}>{tgt.dayLabel}</Text>
-          <Text style={S.walkHeroDuration}>{formatDuration(tgt.minutes)}</Text>
+        {/* Aujourd'hui — card hero */}
+        <View style={[S.walkHero, isDone && S.walkHeroDone]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={S.walkHeroDay}>{tgt.dayLabel}</Text>
+            {isDone && <Text style={S.walkHeroDoneFlag}>✓ FAIT</Text>}
+          </View>
+          <Text style={S.walkHeroDuration}>
+            {formatDuration(isDone ? todayLogged.minutes : tgt.minutes)}
+          </Text>
           <Text style={S.walkHeroSpot}>{tgt.label}</Text>
           <Text style={S.walkHeroIntensity}>Marche en forêt · {tgt.intensityLabel}</Text>
           {tgt.note && <Text style={S.walkHeroNote}>⚠ {tgt.note}</Text>}
           {tgt.vest && <Text style={S.walkHeroVest}>Gilet lesté : {tgt.vest} kg</Text>}
+
+          {/* Stats Strava si présentes */}
+          {isDone && (todayLogged.km || todayLogged.kcal || todayLogged.elev || todayLogged.hr_avg) ? (
+            <View style={S.walkHeroStats}>
+              {todayLogged.km ? (
+                <View style={S.walkHeroStatBlock}>
+                  <Text style={S.walkHeroStatNum}>{todayLogged.km} km</Text>
+                  <Text style={S.walkHeroStatLabel}>Distance</Text>
+                </View>
+              ) : null}
+              {todayLogged.elev ? (
+                <View style={S.walkHeroStatBlock}>
+                  <Text style={S.walkHeroStatNum}>+{todayLogged.elev} m</Text>
+                  <Text style={S.walkHeroStatLabel}>Dénivelé</Text>
+                </View>
+              ) : null}
+              {todayLogged.kcal ? (
+                <View style={S.walkHeroStatBlock}>
+                  <Text style={S.walkHeroStatNum}>{todayLogged.kcal}</Text>
+                  <Text style={S.walkHeroStatLabel}>kcal</Text>
+                </View>
+              ) : null}
+              {todayLogged.hr_avg ? (
+                <View style={S.walkHeroStatBlock}>
+                  <Text style={S.walkHeroStatNum}>{todayLogged.hr_avg}</Text>
+                  <Text style={S.walkHeroStatLabel}>FC moy</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           <Pressable
-            style={[S.walkHeroBtn, todayLogged && S.walkHeroBtnDone]}
+            style={[S.walkHeroBtn, isDone && S.walkHeroBtnDone]}
             onPress={() => {
-              if (todayLogged) {
+              if (isDone) {
                 setLogMinutes(String(todayLogged.minutes));
                 setLogNote(todayLogged.note || '');
               } else {
@@ -708,10 +734,22 @@ function MarcheScreen({ refreshKey, onChanged }) {
             }}
             android_ripple={{ color: COLORS.soft }}
           >
-            <Text style={[S.walkHeroBtnText, todayLogged && S.walkHeroBtnDoneText]}>
-              {todayLogged ? `✓ Fait (${formatDuration(todayLogged.minutes)}) — modifier` : 'Marquer fait'}
+            <Text style={[S.walkHeroBtnText, isDone && S.walkHeroBtnDoneText]}>
+              {isDone ? 'Modifier' : 'Saisir manuellement'}
             </Text>
           </Pressable>
+
+          {stravaConnected && (
+            <Pressable
+              onPress={() => syncStrava({ silent: false })}
+              style={S.walkHeroSyncRow}
+              android_ripple={{ color: 'rgba(255,255,255,0.1)' }}
+            >
+              <Text style={S.walkHeroSyncText}>
+                {syncing ? '⟳ Sync Strava…' : '⟳ Resynchroniser Strava'}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Semaine en cours */}
@@ -729,7 +767,7 @@ function MarcheScreen({ refreshKey, onChanged }) {
           <View style={{ marginTop: 10 }}>
             {weekDays.map((d, i) => {
               const key = dayKeyFromDate(d);
-              const iso = d.toISOString().slice(0, 10);
+              const iso = localIsoDate(d);
               const targetMin = week.dur[key];
               const entry = walkLog.find(e => e.date === iso);
               const isToday = iso === todayIso;
@@ -753,22 +791,10 @@ function MarcheScreen({ refreshKey, onChanged }) {
           </View>
         </View>
 
-        {/* Strava sync */}
-        <StravaSection
-          onSyncedWalk={async (a) => {
-            const note = `Strava: ${a.distance_km} km · +${a.elev_m} m`
-              + (a.kcal ? ` · ${a.kcal} kcal` : '')
-              + (a.hr_avg ? ` · FC ${a.hr_avg}` : '');
-            await logWalk({
-              date: todayIso,
-              minutes: a.duration_min,
-              note,
-            });
-            const l = await loadWalkLog();
-            setWalkLog(l);
-            onChanged && onChanged();
-          }}
-        />
+        {/* Strava — n'apparaît que si non connecté (sinon auto-sync se débrouille) */}
+        {!stravaConnected && (
+          <StravaConnectCard onConnected={async () => { await reload(); }} />
+        )}
 
         {/* Poids */}
         <Text style={S.sectionTitle}>Poids</Text>

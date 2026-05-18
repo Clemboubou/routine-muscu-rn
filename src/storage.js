@@ -134,14 +134,28 @@ export async function loadWalkLog() {
 }
 export async function saveWalkLog(log) { await AsyncStorage.setItem(WALK_LOG_KEY, JSON.stringify(log)); }
 
-export async function logWalk({ date, minutes, note }) {
+// Log d'une marche. Accepte tous les champs Strava optionnels.
+// Si une entrée existe déjà à la date, on REMPLACE par les nouvelles valeurs
+// (en préservant les champs non passés, utile quand on importe puis ajoute une note).
+export async function logWalk(patch) {
   const log = await loadWalkLog();
-  const idx = log.findIndex(e => e.date === date);
-  const entry = { date, minutes: Number(minutes) || 0, note: note || '' };
+  const idx = log.findIndex(e => e.date === patch.date);
+  const prev = idx >= 0 ? log[idx] : {};
+  const entry = {
+    date: patch.date,
+    minutes: patch.minutes != null ? Number(patch.minutes) : prev.minutes || 0,
+    km: patch.km != null ? Number(patch.km) : prev.km || 0,
+    elev: patch.elev != null ? Number(patch.elev) : prev.elev || 0,
+    kcal: patch.kcal != null ? Number(patch.kcal) : prev.kcal || 0,
+    hr_avg: patch.hr_avg != null ? Number(patch.hr_avg) : prev.hr_avg || null,
+    stravaIds: patch.stravaIds != null ? patch.stravaIds : prev.stravaIds || [],
+    note: patch.note != null ? patch.note : prev.note || '',
+  };
   if (idx >= 0) log[idx] = entry;
   else log.push(entry);
   log.sort((a, b) => a.date.localeCompare(b.date));
   await saveWalkLog(log);
+  return entry;
 }
 
 export async function deleteWalkEntry(date) {
