@@ -22,6 +22,7 @@ import {
 } from './src/walkingPlan';
 import * as Strava from './src/strava';
 import { LineChart } from './src/Chart';
+import { log } from './src/log';
 
 // Contexte pour ouvrir la lightbox depuis n'importe où dans l'arbre.
 const LightboxCtx = createContext(() => {});
@@ -554,11 +555,16 @@ function MarcheScreen({ refreshKey, onChanged }) {
   const flash = (m, ms = 2200) => { setToastMsg(m); setTimeout(() => setToastMsg(null), ms); };
 
   const reload = async () => {
+    log('Marche', 'reload()');
     const s = await loadWalkStart();
     if (s) setStartDate(s);
-    setWalkLog(await loadWalkLog());
-    setWeightLog(await loadWeightLog());
-    setStravaConnected(!!(await Strava.loadToken()));
+    const wlog = await loadWalkLog();
+    const wglog = await loadWeightLog();
+    const hasTok = !!(await Strava.loadToken());
+    log('Marche', 'reload: walks=', wlog.length, 'weights=', wglog.length, 'stravaConnected=', hasTok);
+    setWalkLog(wlog);
+    setWeightLog(wglog);
+    setStravaConnected(hasTok);
   };
 
   useEffect(() => { reload(); }, [refreshKey]);
@@ -568,26 +574,31 @@ function MarcheScreen({ refreshKey, onChanged }) {
   useEffect(() => {
     if (autoSyncRef.current || !stravaConnected) return;
     autoSyncRef.current = true;
+    log('Marche', 'auto-sync triggered (connected=true, first time)');
     syncStrava({ silent: true });
   }, [stravaConnected]);
 
   const syncStrava = async ({ silent = false } = {}) => {
+    log('Marche', 'syncStrava silent=', silent);
     if (!silent) setSyncing(true);
     const r = await Strava.fetchTodayWalkActivities();
     if (!silent) setSyncing(false);
     if (!r.ok) {
+      log('Marche', 'sync failed:', r.error);
       if (!silent) flash(r.error);
       return;
     }
     if (r.activities.length === 0) {
+      log('Marche', 'sync: no walks today');
       if (!silent) flash('Aucune marche Strava aujourd\'hui');
       return;
     }
     const todayIsoLocal = localIsoDate();
-    const log = await loadWalkLog();
-    const prev = log.find(e => e.date === todayIsoLocal);
+    const wlog = await loadWalkLog();
+    const prev = wlog.find(e => e.date === todayIsoLocal);
     const imported = new Set(prev?.stravaIds || []);
     const toImport = r.activities.filter(a => !imported.has(a.id));
+    log('Marche', `sync: ${r.activities.length} trouvées, ${toImport.length} nouvelles à importer`);
     if (toImport.length === 0) {
       if (!silent) flash('Déjà à jour');
       return;
@@ -598,7 +609,7 @@ function MarcheScreen({ refreshKey, onChanged }) {
     const addKcal = toImport.reduce((s, a) => s + (a.kcal || 0), 0);
     const hrAvgs = toImport.map(a => a.hr_avg).filter(Boolean);
     const avgHr = hrAvgs.length ? Math.round(hrAvgs.reduce((s, v) => s + v, 0) / hrAvgs.length) : (prev?.hr_avg || null);
-    await logWalk({
+    const result = await logWalk({
       date: todayIsoLocal,
       minutes: (prev?.minutes || 0) + addMin,
       km: +((prev?.km || 0) + addKm).toFixed(2),
@@ -607,6 +618,7 @@ function MarcheScreen({ refreshKey, onChanged }) {
       hr_avg: avgHr,
       stravaIds: [...imported, ...toImport.map(a => a.id)],
     });
+    log('Marche', 'walk logged:', result);
     setWalkLog(await loadWalkLog());
     onChanged && onChanged();
     flash(`+${formatDuration(addMin)} sync Strava`);
@@ -817,7 +829,7 @@ function MarcheScreen({ refreshKey, onChanged }) {
             onPress={() => setWeightOpen(true)}
             android_ripple={{ color: '#333' }}
           >
-            <Text style={S.walkHeroBtnText}>Peser aujourd'hui</Text>
+            <Text style={[S.walkHeroBtnText, { color: COLORS.bg }]}>Peser aujourd'hui</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -1227,6 +1239,7 @@ const TABS = [
 ];
 
 function Shell() {
+  useEffect(() => { log('App', 'Shell mounted'); return () => log('App', 'Shell unmounted'); }, []);
   const [tab, setTab] = useState('today');
   const [sessionMode, setSessionMode] = useState(null); // null ou dayIdx (1/3/5)
   const [historyEntryIdx, setHistoryEntryIdx] = useState(null); // null ou storeIdx
@@ -1318,7 +1331,7 @@ function Shell() {
             <Pressable
               key={t.key}
               style={S.tab}
-              onPress={() => setTab(t.key)}
+              onPress={() => { log('App', 'tab →', t.key); setTab(t.key); }}
               android_ripple={{ color: COLORS.soft }}
             >
               <Text style={[S.tabText, tab === t.key && S.tabTextActive]}>{t.label}</Text>

@@ -4,6 +4,7 @@
 
 import * as AuthSession from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { log, error as logError } from './log';
 
 const STRAVA_TOKEN_KEY = 'strava-token-v1';
 
@@ -19,11 +20,12 @@ const DISCOVERY = {
 };
 
 export function makeStravaRedirectUri() {
-  // Host = 'localhost' (Strava exige un domaine "valide" en Authorization Callback Domain).
-  return AuthSession.makeRedirectUri({
+  const uri = AuthSession.makeRedirectUri({
     scheme: 'routinemuscu',
     path: 'localhost/strava',
   });
+  log('Strava', 'redirect URI =', uri);
+  return uri;
 }
 
 export async function disconnect() {
@@ -41,6 +43,7 @@ export async function saveToken(tok) {
 
 // Lance le flux OAuth. Retourne { ok, error? }.
 export async function connect() {
+  log('Strava', 'connect() start');
   const redirectUri = makeStravaRedirectUri();
   const request = new AuthSession.AuthRequest({
     clientId: CLIENT_ID,
@@ -50,9 +53,11 @@ export async function connect() {
     extraParams: { approval_prompt: 'auto' },
   });
   await request.makeAuthUrlAsync(DISCOVERY);
+  log('Strava', 'auth URL =', request.url);
   const result = await request.promptAsync(DISCOVERY);
+  log('Strava', 'promptAsync result =', result.type, result.errorCode || '');
   if (result.type !== 'success') {
-    return { ok: false, error: 'Connexion annulée ou refusée' };
+    return { ok: false, error: 'Connexion annulée ou refusée (' + result.type + ')' };
   }
   try {
     const tokenResp = await AuthSession.exchangeCodeAsync(
@@ -65,6 +70,7 @@ export async function connect() {
       },
       DISCOVERY
     );
+    log('Strava', 'token obtained, expires in', tokenResp.expiresIn, 's');
     await saveToken({
       accessToken: tokenResp.accessToken,
       refreshToken: tokenResp.refreshToken,
@@ -72,6 +78,7 @@ export async function connect() {
     });
     return { ok: true };
   } catch (e) {
+    logError('Strava', 'token exchange failed', e);
     return { ok: false, error: 'Échange du code échoué : ' + e.message };
   }
 }
@@ -106,19 +113,24 @@ export async function getValidAccessToken() {
 // Récupère les activités de la journée (Walk / Hike) en epoch UTC.
 // Retourne array de { id, name, type, duration_min, distance_km, elev_m, kcal, hr_avg, start_date }.
 export async function fetchTodayWalkActivities() {
+  log('Strava', 'fetchTodayWalkActivities() start');
   const token = await getValidAccessToken();
-  if (!token) return { ok: false, error: 'Non connecté' };
+  if (!token) { log('Strava', 'no valid token'); return { ok: false, error: 'Non connecté' }; }
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
   const afterTs = Math.floor(start.getTime() / 1000);
   const beforeTs = Math.floor(end.getTime() / 1000);
   const url = `https://www.strava.com/api/v3/athlete/activities?after=${afterTs}&before=${beforeTs}&per_page=10`;
+  log('Strava', 'GET', url);
   try {
     const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    log('Strava', 'HTTP', resp.status);
     if (!resp.ok) return { ok: false, error: 'API ' + resp.status };
     const arr = await resp.json();
+    log('Strava', `${arr.length} activités totales aujourd'hui`);
     const walks = arr.filter(a => ['Walk', 'Hike', 'WalkingWorkout'].includes(a.type) || a.sport_type === 'Walk' || a.sport_type === 'Hike');
+    log('Strava', `${walks.length} marches/randos`);
     return {
       ok: true,
       activities: walks.map(a => ({
@@ -135,6 +147,7 @@ export async function fetchTodayWalkActivities() {
       })),
     };
   } catch (e) {
+    logError('Strava', 'fetch failed', e);
     return { ok: false, error: 'Réseau : ' + e.message };
   }
 }
