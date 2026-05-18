@@ -15,9 +15,10 @@ const DISCOVERY = {
 };
 
 export function makeStravaRedirectUri() {
+  // Host = 'localhost' (Strava exige un domaine "valide" en Authorization Callback Domain).
   return AuthSession.makeRedirectUri({
     scheme: 'routinemuscu',
-    path: 'strava',
+    path: 'localhost/strava',
   });
 }
 

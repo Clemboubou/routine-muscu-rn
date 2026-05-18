@@ -546,7 +546,7 @@ function StravaSection({ onSyncedWalk }) {
             </Pressable>
           </View>
           <Text style={[S.exoMeta, { marginTop: 10, fontSize: 11 }]}>
-            Redirect URI à mettre dans Strava : routinemuscu://strava
+            Authorization Callback Domain dans Strava : <Text style={{ fontWeight: '600' }}>localhost</Text>
           </Text>
         </>
       )}
