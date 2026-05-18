@@ -602,7 +602,6 @@ function StravaSection({ onSyncedWalk }) {
 function CourbeScreen({ refreshKey }) {
   const [walkLog, setWalkLog] = useState([]);
   const [weightLog, setWeightLog] = useState([]);
-  const [historyLog, setHistoryLog] = useState([]);
   const [startDate, setStartDate] = useState(WALKING_PLAN.startDate);
 
   useEffect(() => {
@@ -611,19 +610,16 @@ function CourbeScreen({ refreshKey }) {
       if (s) setStartDate(s);
       setWalkLog(await loadWalkLog());
       setWeightLog(await loadWeightLog());
-      setHistoryLog(await loadHistory());
     })();
   }, [refreshKey]);
 
-  // Données poids
   const weightData = weightLog
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(e => ({ x: e.date, y: Number(e.kg) }));
 
-  // Volume marche par semaine du plan (h)
   const weeklyVolume = (() => {
-    const m = new Map(); // weekNum -> minutes
+    const m = new Map();
     walkLog.forEach(e => {
       const w = currentWeekNumber(startDate, new Date(e.date + 'T12:00:00'));
       if (!w) return;
@@ -632,33 +628,6 @@ function CourbeScreen({ refreshKey }) {
     return Array.from(m.entries())
       .sort((a, b) => a[0] - b[0])
       .map(([wn, min]) => ({ x: 'S' + wn, y: +(min / 60).toFixed(1) }));
-  })();
-
-  // Volume muscu : nombre de séances par semaine ISO (8 dernières)
-  const muscuPerWeek = (() => {
-    const m = new Map();
-    historyLog.forEach(e => {
-      const d = new Date(e.date);
-      const yw = isoYearWeek(d);
-      m.set(yw, (m.get(yw) || 0) + 1);
-    });
-    return Array.from(m.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-12)
-      .map(([yw, n]) => ({ x: yw.slice(5), y: n })); // affiche juste "W23"
-  })();
-
-  // Max poids sur un exo récurrent (ex: leg-press) sur le temps
-  const legPressProg = (() => {
-    const pts = [];
-    historyLog.forEach(e => {
-      const ex = e.exos.find(x => x.slug === 'leg-press');
-      if (ex && ex.weights) {
-        const ws = ex.weights.filter(w => w).map(Number);
-        if (ws.length) pts.push({ x: e.date.slice(5, 10), y: Math.max(...ws) });
-      }
-    });
-    return pts;
   })();
 
   const screenW = Dimensions.get('window').width - 56;
@@ -688,37 +657,8 @@ function CourbeScreen({ refreshKey }) {
           emptyLabel="Log au moins 2 marches sur 2 semaines"
         />
       </View>
-
-      <Text style={S.sectionTitle}>Séances muscu / semaine</Text>
-      <View style={S.card}>
-        <LineChart
-          data={muscuPerWeek}
-          width={screenW}
-          color={COLORS.ink}
-          emptyLabel="Pas encore de séances muscu enregistrées"
-        />
-      </View>
-
-      <Text style={S.sectionTitle}>Progression presse à cuisses (max kg)</Text>
-      <View style={S.card}>
-        <LineChart
-          data={legPressProg}
-          width={screenW}
-          color="#b25400"
-          emptyLabel="Pas encore 2 séances avec la presse à cuisses"
-        />
-      </View>
     </ScrollView>
   );
-}
-
-function isoYearWeek(d) {
-  const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
-  return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
 // ============ MARCHE (plan 32 sem) ============
