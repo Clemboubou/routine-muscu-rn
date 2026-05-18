@@ -2,6 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY = 'muscu-history-v1';
 const DRAFT_KEY = 'muscu-draft-v1';
+const WALK_LOG_KEY = 'walk-log-v1';
+const WALK_START_KEY = 'walk-start-v1';
+const WEIGHT_LOG_KEY = 'weight-log-v1';
 
 export async function loadHistory() {
   try {
@@ -121,6 +124,55 @@ export async function commitSession({ sessionTitle, exos, notes }) {
   };
   h.push(entry);
   await saveHistory(h);
+}
+
+// === MARCHE ===
+// Log des marches : array d'objets { date: 'YYYY-MM-DD', minutes: 120, note?: '' }
+export async function loadWalkLog() {
+  try { const raw = await AsyncStorage.getItem(WALK_LOG_KEY); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+export async function saveWalkLog(log) { await AsyncStorage.setItem(WALK_LOG_KEY, JSON.stringify(log)); }
+
+export async function logWalk({ date, minutes, note }) {
+  const log = await loadWalkLog();
+  const idx = log.findIndex(e => e.date === date);
+  const entry = { date, minutes: Number(minutes) || 0, note: note || '' };
+  if (idx >= 0) log[idx] = entry;
+  else log.push(entry);
+  log.sort((a, b) => a.date.localeCompare(b.date));
+  await saveWalkLog(log);
+}
+
+export async function deleteWalkEntry(date) {
+  const log = await loadWalkLog();
+  const next = log.filter(e => e.date !== date);
+  await saveWalkLog(next);
+}
+
+// Date de démarrage du plan (par défaut celle hardcodée dans walkingPlan.js)
+export async function loadWalkStart() {
+  try { return (await AsyncStorage.getItem(WALK_START_KEY)) || null; }
+  catch { return null; }
+}
+export async function saveWalkStart(isoDate) {
+  await AsyncStorage.setItem(WALK_START_KEY, isoDate);
+}
+
+// Pesées : array d'objets { date, kg }
+export async function loadWeightLog() {
+  try { const raw = await AsyncStorage.getItem(WEIGHT_LOG_KEY); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+export async function logWeight({ date, kg }) {
+  const log = await loadWeightLog();
+  const idx = log.findIndex(e => e.date === date);
+  const entry = { date, kg: Number(kg) };
+  if (idx >= 0) log[idx] = entry;
+  else log.push(entry);
+  log.sort((a, b) => a.date.localeCompare(b.date));
+  await AsyncStorage.setItem(WEIGHT_LOG_KEY, JSON.stringify(log));
+  return log;
 }
 
 // === Legacy : saisie d'un seul exo (encore utilisé si tu touches un exo depuis Aujourd'hui) ===

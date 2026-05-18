@@ -233,6 +233,65 @@ export const S = StyleSheet.create({
   logCancelBtn: { padding: 12, alignItems: 'center' },
   logCancelBtnText: { color: COLORS.muted, fontSize: 14 },
 
+  // === Marche ===
+  walkHero: {
+    backgroundColor: COLORS.ink,
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 12,
+  },
+  walkHeroDay: { color: '#aaa', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '600' },
+  walkHeroDuration: { color: COLORS.bg, fontSize: 36, fontWeight: '700', marginVertical: 4, fontVariant: ['tabular-nums'] },
+  walkHeroSpot: { color: COLORS.bg, fontSize: 15, fontWeight: '500' },
+  walkHeroIntensity: { color: '#bbb', fontSize: 13, marginTop: 2 },
+  walkHeroNote: { color: '#ffcc4d', fontSize: 13, marginTop: 10 },
+  walkHeroVest: { color: '#ffcc4d', fontSize: 13, marginTop: 4 },
+  walkHeroBtn: {
+    backgroundColor: COLORS.bg,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  walkHeroBtnText: { color: COLORS.ink, fontWeight: '700', fontSize: 14 },
+  walkHeroBtnDone: { backgroundColor: '#2a3d2f' },
+  walkHeroBtnDoneText: { color: '#c8e2cf' },
+
+  weekBar: {
+    height: 8,
+    backgroundColor: COLORS.line,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  weekBarFill: { height: '100%', backgroundColor: COLORS.ink },
+
+  dayRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: COLORS.line,
+    alignItems: 'center',
+    gap: 12,
+  },
+  dayRowToday: { backgroundColor: '#fafafa', marginHorizontal: -16, paddingHorizontal: 16 },
+  dayName: { width: 60, fontSize: 14, fontWeight: '500', color: COLORS.ink },
+  dayTarget: { flex: 1, fontSize: 13, color: COLORS.muted, fontVariant: ['tabular-nums'] },
+  dayDone: { fontSize: 13, color: COLORS.ok, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  dayMissed: { fontSize: 13, color: COLORS.muted, fontStyle: 'italic' },
+
+  weightCard: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.line,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+  },
+  weightLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  weightCurrent: { fontSize: 28, fontWeight: '700', color: COLORS.ink, fontVariant: ['tabular-nums'] },
+  weightTarget: { fontSize: 13, color: COLORS.muted },
+  weightDelta: { fontSize: 13, color: COLORS.ok, fontWeight: '600', marginTop: 4 },
+
   // === Export / Import bar (discret en bas d'Historique) ===
   ioBar: {
     flexDirection: 'row', justifyContent: 'center', gap: 20,

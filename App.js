@@ -12,7 +12,14 @@ import {
   loadDraft, saveDraft, clearDraft, commitSession,
   exportData, importData,
   updateHistoryEntry, deleteHistoryEntry,
+  loadWalkLog, logWalk, deleteWalkEntry,
+  loadWalkStart, saveWalkStart,
+  loadWeightLog, logWeight,
 } from './src/storage';
+import {
+  WALKING_PLAN, currentWeekNumber, getWeek, getBlock,
+  targetForToday, weekTotalMinutes, formatDuration, dayLabel, dayKeyFromDate,
+} from './src/walkingPlan';
 
 // Contexte pour ouvrir la lightbox depuis n'importe où dans l'arbre.
 const LightboxCtx = createContext(() => {});
@@ -425,6 +432,270 @@ function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConf
   );
 }
 
+// ============ MARCHE (plan 32 sem) ============
+
+function MarcheScreen({ refreshKey, onChanged }) {
+  const [startDate, setStartDate] = useState(WALKING_PLAN.startDate);
+  const [walkLog, setWalkLog] = useState([]);
+  const [weightLog, setWeightLog] = useState([]);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logMinutes, setLogMinutes] = useState('');
+  const [logNote, setLogNote] = useState('');
+  const [weightOpen, setWeightOpen] = useState(false);
+  const [weightKg, setWeightKg] = useState('');
+  const [toastMsg, setToastMsg] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const s = await loadWalkStart();
+      if (s) setStartDate(s);
+      const log = await loadWalkLog();
+      setWalkLog(log);
+      const w = await loadWeightLog();
+      setWeightLog(w);
+    })();
+  }, [refreshKey]);
+
+  const flash = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 1800);
+  };
+
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const weekNum = currentWeekNumber(startDate, today);
+  const week = weekNum ? getWeek(weekNum) : null;
+  const block = week ? getBlock(week.block) : null;
+  const tgt = weekNum ? targetForToday(weekNum, today) : null;
+
+  const todayLogged = walkLog.find(e => e.date === todayIso);
+
+  // Progression de la semaine en cours : on calcule lundi-dimanche de la semaine du `today`
+  const weekStart = new Date(today);
+  const dow = today.getDay(); // 0=dim
+  const offsetToMon = dow === 0 ? -6 : 1 - dow;
+  weekStart.setDate(today.getDate() + offsetToMon);
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
+  const targetTotalMin = weekNum ? weekTotalMinutes(weekNum) : 0;
+  const doneTotalMin = weekDays.reduce((sum, d) => {
+    const iso = d.toISOString().slice(0, 10);
+    const entry = walkLog.find(e => e.date === iso);
+    return sum + (entry ? entry.minutes : 0);
+  }, 0);
+  const progressPct = targetTotalMin ? Math.min(100, (doneTotalMin / targetTotalMin) * 100) : 0;
+
+  const lastWeight = weightLog.length ? weightLog[weightLog.length - 1] : null;
+  const firstWeight = weightLog.length ? weightLog[0] : null;
+  const delta = lastWeight && firstWeight ? lastWeight.kg - firstWeight.kg : 0;
+
+  const onLogWalk = async () => {
+    if (!logMinutes.trim()) return;
+    await logWalk({ date: todayIso, minutes: Number(logMinutes), note: logNote.trim() });
+    setLogOpen(false); setLogMinutes(''); setLogNote('');
+    flash('Marche enregistrée');
+    const l = await loadWalkLog();
+    setWalkLog(l);
+    onChanged && onChanged();
+  };
+
+  const onLogWeight = async () => {
+    if (!weightKg.trim()) return;
+    const next = await logWeight({ date: todayIso, kg: weightKg.replace(',', '.') });
+    setWeightOpen(false); setWeightKg('');
+    setWeightLog(next);
+    flash('Pesée enregistrée');
+  };
+
+  if (!weekNum) {
+    return (
+      <ScrollView contentContainerStyle={S.scroll}>
+        <Text style={S.empty}>
+          Plan terminé ou pas encore commencé.{'\n'}
+          Date de démarrage actuelle : {startDate}
+        </Text>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={S.scroll}>
+        {/* Aujourd'hui */}
+        <Text style={S.sectionTitle}>Aujourd'hui · {tgt.dayLabel}</Text>
+        <View style={S.walkHero}>
+          <Text style={S.walkHeroDay}>{tgt.label}</Text>
+          <Text style={S.walkHeroDuration}>{formatDuration(tgt.minutes)}</Text>
+          <Text style={S.walkHeroSpot}>{tgt.spot.name}</Text>
+          <Text style={S.walkHeroIntensity}>{tgt.intensityLabel} · trajet {tgt.spot.driveMin} min</Text>
+          {tgt.note && <Text style={S.walkHeroNote}>⚠ {tgt.note}</Text>}
+          {tgt.vest && <Text style={S.walkHeroVest}>Gilet lesté : {tgt.vest} kg</Text>}
+          <Pressable
+            style={[S.walkHeroBtn, todayLogged && S.walkHeroBtnDone]}
+            onPress={() => {
+              if (todayLogged) {
+                setLogMinutes(String(todayLogged.minutes));
+                setLogNote(todayLogged.note || '');
+              } else {
+                setLogMinutes(String(tgt.minutes));
+              }
+              setLogOpen(true);
+            }}
+            android_ripple={{ color: COLORS.soft }}
+          >
+            <Text style={[S.walkHeroBtnText, todayLogged && S.walkHeroBtnDoneText]}>
+              {todayLogged ? `✓ Fait (${formatDuration(todayLogged.minutes)}) — modifier` : 'Marquer fait'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Semaine en cours */}
+        <Text style={S.sectionTitle}>
+          Semaine {weekNum} / 32 · Bloc {block.id} — {block.name}
+        </Text>
+        <View style={S.card}>
+          <Text style={S.exoMeta}>{block.objective}</Text>
+          <Text style={[S.exoMeta, { marginTop: 6 }]}>
+            {formatDuration(doneTotalMin)} fait / {formatDuration(targetTotalMin)} prévu cette semaine
+          </Text>
+          <View style={S.weekBar}>
+            <View style={[S.weekBarFill, { width: `${progressPct}%` }]} />
+          </View>
+          <View style={{ marginTop: 10 }}>
+            {weekDays.map((d, i) => {
+              const key = dayKeyFromDate(d);
+              const iso = d.toISOString().slice(0, 10);
+              const targetMin = week.dur[key];
+              const entry = walkLog.find(e => e.date === iso);
+              const isToday = iso === todayIso;
+              const isPast = d < today && !isToday;
+              return (
+                <View key={i} style={[S.dayRow, isToday && S.dayRowToday]}>
+                  <Text style={S.dayName}>{dayLabel(key).slice(0, 3)}</Text>
+                  <Text style={S.dayTarget}>
+                    {WALKING_PLAN.template[key].label} · {formatDuration(targetMin)}
+                  </Text>
+                  {entry ? (
+                    <Text style={S.dayDone}>{formatDuration(entry.minutes)} ✓</Text>
+                  ) : isPast ? (
+                    <Text style={S.dayMissed}>—</Text>
+                  ) : (
+                    <Text style={S.dayMissed}>{formatDuration(targetMin)}</Text>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Poids */}
+        <Text style={S.sectionTitle}>Poids</Text>
+        <View style={S.weightCard}>
+          <View style={S.weightLine}>
+            <Text style={S.weightCurrent}>
+              {lastWeight ? `${lastWeight.kg} kg` : '— kg'}
+            </Text>
+            <Text style={S.weightTarget}>
+              cible {WALKING_PLAN.goals.targetWeightKgMedian} kg
+            </Text>
+          </View>
+          {lastWeight && firstWeight && weightLog.length > 1 && (
+            <Text style={S.weightDelta}>
+              {delta > 0 ? '+' : ''}{delta.toFixed(1)} kg depuis le {firstWeight.date}
+            </Text>
+          )}
+          <Pressable
+            style={[S.walkHeroBtn, { backgroundColor: COLORS.ink, marginTop: 12 }]}
+            onPress={() => setWeightOpen(true)}
+            android_ripple={{ color: '#333' }}
+          >
+            <Text style={S.walkHeroBtnText}>Peser aujourd'hui</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+
+      {/* Modal log marche */}
+      {logOpen && (
+        <View style={S.modalOverlay}>
+          <View style={S.modalCard}>
+            <Text style={S.modalTitle}>Marche du {todayIso}</Text>
+            <Text style={S.modalText}>
+              Cible : {formatDuration(tgt.minutes)} · {tgt.label}
+            </Text>
+            <Text style={[S.logSetLabel, { marginBottom: 4 }]}>Durée réalisée (min)</Text>
+            <TextInput
+              style={S.logSetInput}
+              value={logMinutes}
+              onChangeText={setLogMinutes}
+              placeholder="minutes"
+              placeholderTextColor={COLORS.muted}
+              keyboardType="number-pad"
+            />
+            <TextInput
+              style={[S.logExoNote, { minHeight: 60, marginTop: 10 }]}
+              value={logNote}
+              onChangeText={setLogNote}
+              placeholder="Note (terrain, ressenti…)"
+              placeholderTextColor={COLORS.muted}
+              multiline
+            />
+            <View style={[S.modalBtns, { marginTop: 16 }]}>
+              <Pressable
+                style={S.modalBtnGhost}
+                onPress={() => { setLogOpen(false); setLogMinutes(''); setLogNote(''); }}
+                android_ripple={{ color: COLORS.soft }}
+              >
+                <Text style={S.modalBtnGhostText}>Annuler</Text>
+              </Pressable>
+              <Pressable style={S.modalBtnPrimary} onPress={onLogWalk} android_ripple={{ color: '#333' }}>
+                <Text style={S.modalBtnPrimaryText}>Enregistrer</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Modal pesée */}
+      {weightOpen && (
+        <View style={S.modalOverlay}>
+          <View style={S.modalCard}>
+            <Text style={S.modalTitle}>Pesée du {todayIso}</Text>
+            <Text style={[S.logSetLabel, { marginBottom: 4 }]}>Poids (kg)</Text>
+            <TextInput
+              style={S.logSetInput}
+              value={weightKg}
+              onChangeText={setWeightKg}
+              placeholder="kg"
+              placeholderTextColor={COLORS.muted}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+            <View style={[S.modalBtns, { marginTop: 16 }]}>
+              <Pressable
+                style={S.modalBtnGhost}
+                onPress={() => { setWeightOpen(false); setWeightKg(''); }}
+                android_ripple={{ color: COLORS.soft }}
+              >
+                <Text style={S.modalBtnGhostText}>Annuler</Text>
+              </Pressable>
+              <Pressable style={S.modalBtnPrimary} onPress={onLogWeight} android_ripple={{ color: '#333' }}>
+                <Text style={S.modalBtnPrimaryText}>Enregistrer</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {toastMsg && (
+        <View style={S.toast}><Text style={S.toastText}>{toastMsg}</Text></View>
+      )}
+    </>
+  );
+}
+
 // ============ HISTORY ============
 
 function HistoryScreen({ historyVersion, onChanged, onOpenEntry }) {
@@ -744,7 +1015,8 @@ function HistoryExoEditBlock({ exo, weights, onWeightChange }) {
 
 const TABS = [
   { key: 'today', label: "Aujourd'hui" },
-  { key: 'training', label: 'Entraînement' },
+  { key: 'marche', label: 'Marche' },
+  { key: 'training', label: 'Muscu' },
   { key: 'history', label: 'Historique' },
 ];
 
@@ -787,6 +1059,7 @@ function Shell() {
   if (sessionMode != null) title = SESSIONS[sessionMode].title;
   else if (historyEntryIdx != null) title = 'Détail séance';
   else if (tab === 'today') title = "Aujourd'hui";
+  else if (tab === 'marche') title = 'Marche 32 sem';
   else if (tab === 'training') title = 'Entraînement';
   else title = 'Historique';
 
@@ -817,6 +1090,8 @@ function Shell() {
           />
         ) : tab === 'today' ? (
           <TodayScreen onStartSession={startSession} draftSessionDay={draftSessionDay} />
+        ) : tab === 'marche' ? (
+          <MarcheScreen refreshKey={historyVersion} onChanged={() => setHistoryVersion(v => v + 1)} />
         ) : tab === 'training' ? (
           <TrainingPickerScreen onPickSession={startSession} draftSessionDay={draftSessionDay} />
         ) : (
