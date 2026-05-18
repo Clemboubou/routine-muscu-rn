@@ -5,8 +5,12 @@
 import * as AuthSession from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const STRAVA_CREDS_KEY = 'strava-creds-v1';
 const STRAVA_TOKEN_KEY = 'strava-token-v1';
+
+// App perso single-user. Secret en dur OK (le repo est public mais le risque
+// se limite à un détournement OAuth qui exige consentement athlète, donc faible).
+const CLIENT_ID = '247553';
+const CLIENT_SECRET = '4a01096db1d4583a211a86f2290891bd88cf7d5e';
 
 const DISCOVERY = {
   authorizationEndpoint: 'https://www.strava.com/oauth/mobile/authorize',
@@ -22,17 +26,7 @@ export function makeStravaRedirectUri() {
   });
 }
 
-export async function loadCreds() {
-  try { const raw = await AsyncStorage.getItem(STRAVA_CREDS_KEY); return raw ? JSON.parse(raw) : null; }
-  catch { return null; }
-}
-
-export async function saveCreds({ clientId, clientSecret }) {
-  await AsyncStorage.setItem(STRAVA_CREDS_KEY, JSON.stringify({ clientId, clientSecret }));
-}
-
-export async function clearCreds() {
-  await AsyncStorage.removeItem(STRAVA_CREDS_KEY);
+export async function disconnect() {
   await AsyncStorage.removeItem(STRAVA_TOKEN_KEY);
 }
 
@@ -47,12 +41,9 @@ export async function saveToken(tok) {
 
 // Lance le flux OAuth. Retourne { ok, error? }.
 export async function connect() {
-  const creds = await loadCreds();
-  if (!creds) return { ok: false, error: 'Client ID / secret manquants' };
-
   const redirectUri = makeStravaRedirectUri();
   const request = new AuthSession.AuthRequest({
-    clientId: creds.clientId,
+    clientId: CLIENT_ID,
     scopes: ['activity:read_all'],
     redirectUri,
     usePKCE: false,
@@ -67,8 +58,8 @@ export async function connect() {
     const tokenResp = await AuthSession.exchangeCodeAsync(
       {
         code: result.params.code,
-        clientId: creds.clientId,
-        clientSecret: creds.clientSecret,
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
         redirectUri,
         extraParams: { grant_type: 'authorization_code' },
       },
@@ -91,13 +82,11 @@ export async function getValidAccessToken() {
   if (!tok) return null;
   const now = Math.floor(Date.now() / 1000);
   if (now < tok.expiresAt - 60) return tok.accessToken;
-  const creds = await loadCreds();
-  if (!creds) return null;
   try {
     const refreshed = await AuthSession.refreshAsync(
       {
-        clientId: creds.clientId,
-        clientSecret: creds.clientSecret,
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
         refreshToken: tok.refreshToken,
       },
       DISCOVERY

@@ -437,37 +437,22 @@ function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConf
 // ============ STRAVA SECTION (dans Marche) ============
 
 function StravaSection({ onSyncedWalk }) {
-  const [creds, setCreds] = useState(null);
   const [hasToken, setHasToken] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
   const [busy, setBusy] = useState(false);
   const [activities, setActivities] = useState(null);
   const [msg, setMsg] = useState(null);
 
-  const refresh = async () => {
-    setCreds(await Strava.loadCreds());
-    setHasToken(!!(await Strava.loadToken()));
-  };
+  const refresh = async () => setHasToken(!!(await Strava.loadToken()));
   useEffect(() => { refresh(); }, []);
 
-  const onSaveCreds = async () => {
-    await Strava.saveCreds({ clientId: clientId.trim(), clientSecret: clientSecret.trim() });
-    setSetupOpen(false);
-    setClientId(''); setClientSecret('');
-    await refresh();
-    setMsg('Identifiants enregistrés');
-    setTimeout(() => setMsg(null), 1800);
-  };
+  const flash = (m, ms = 2200) => { setMsg(m); setTimeout(() => setMsg(null), ms); };
 
   const onConnect = async () => {
     setBusy(true);
     const r = await Strava.connect();
     setBusy(false);
-    if (r.ok) { setMsg('Connecté à Strava'); await refresh(); }
-    else setMsg(r.error);
-    setTimeout(() => setMsg(null), 2500);
+    if (r.ok) { flash('Connecté à Strava'); await refresh(); }
+    else flash(r.error);
   };
 
   const onSync = async () => {
@@ -475,98 +460,46 @@ function StravaSection({ onSyncedWalk }) {
     setActivities(null);
     const r = await Strava.fetchTodayWalkActivities();
     setBusy(false);
-    if (!r.ok) { setMsg(r.error); setTimeout(() => setMsg(null), 2500); return; }
+    if (!r.ok) { flash(r.error); return; }
     setActivities(r.activities);
-    if (r.activities.length === 0) {
-      setMsg('Aucune marche/randonnée trouvée aujourd\'hui');
-      setTimeout(() => setMsg(null), 2500);
-    }
+    if (r.activities.length === 0) flash('Aucune marche trouvée aujourd\'hui');
   };
 
   const onImportActivity = async (a) => {
     await onSyncedWalk(a);
-    setMsg('Marche importée');
-    setTimeout(() => setMsg(null), 1800);
+    flash('Marche importée');
     setActivities(null);
   };
 
   const onDisconnect = async () => {
-    await Strava.clearCreds();
+    await Strava.disconnect();
     setActivities(null);
     await refresh();
-    setMsg('Déconnecté');
-    setTimeout(() => setMsg(null), 1800);
+    flash('Déconnecté');
   };
 
   return (
     <View style={S.card}>
       <Text style={[S.sectionTitle, { marginTop: 0 }]}>Strava</Text>
 
-      {!creds && !setupOpen && (
-        <>
-          <Text style={[S.exoMeta, { marginBottom: 8 }]}>
-            Pour synchroniser tes activités automatiquement, crée une app Strava (gratuit, 2 min) :
-            {'\n'}1. va sur strava.com/settings/api
-            {'\n'}2. récupère ton Client ID + Client Secret
+      {!hasToken ? (
+        <Pressable
+          style={[S.walkHeroBtn, { backgroundColor: '#fc4c02' }]}
+          onPress={onConnect}
+          disabled={busy}
+        >
+          <Text style={[S.walkHeroBtnText, { color: '#fff' }]}>
+            {busy ? '…' : 'Connecter à Strava'}
           </Text>
-          <Pressable style={[S.walkHeroBtn, { backgroundColor: COLORS.ink }]} onPress={() => setSetupOpen(true)}>
-            <Text style={S.walkHeroBtnText}>Configurer Strava</Text>
-          </Pressable>
-        </>
-      )}
-
-      {setupOpen && (
+        </Pressable>
+      ) : (
         <>
-          <Text style={[S.logSetLabel, { marginBottom: 4, textAlign: 'left' }]}>Client ID</Text>
-          <TextInput
-            style={S.logSetInput}
-            value={clientId}
-            onChangeText={setClientId}
-            placeholder="ex: 123456"
-            placeholderTextColor={COLORS.muted}
-            keyboardType="number-pad"
-            autoCapitalize="none"
-          />
-          <Text style={[S.logSetLabel, { marginTop: 8, marginBottom: 4, textAlign: 'left' }]}>Client Secret</Text>
-          <TextInput
-            style={S.logSetInput}
-            value={clientSecret}
-            onChangeText={setClientSecret}
-            placeholder="chaîne hex 40 caractères"
-            placeholderTextColor={COLORS.muted}
-            autoCapitalize="none"
-            secureTextEntry
-          />
-          <View style={[S.modalBtns, { marginTop: 12 }]}>
-            <Pressable style={S.modalBtnGhost} onPress={() => setSetupOpen(false)}>
-              <Text style={S.modalBtnGhostText}>Annuler</Text>
-            </Pressable>
-            <Pressable style={S.modalBtnPrimary} onPress={onSaveCreds} disabled={!clientId.trim() || !clientSecret.trim()}>
-              <Text style={S.modalBtnPrimaryText}>Enregistrer</Text>
-            </Pressable>
-          </View>
-          <Text style={[S.exoMeta, { marginTop: 10, fontSize: 11 }]}>
-            Authorization Callback Domain dans Strava : <Text style={{ fontWeight: '600' }}>localhost</Text>
-          </Text>
-        </>
-      )}
-
-      {creds && !hasToken && (
-        <>
-          <Text style={[S.exoMeta, { marginBottom: 8 }]}>App configurée (client ID {creds.clientId}). Plus qu'à autoriser :</Text>
-          <Pressable style={[S.walkHeroBtn, { backgroundColor: '#fc4c02' }]} onPress={onConnect} disabled={busy}>
-            <Text style={[S.walkHeroBtnText, { color: '#fff' }]}>{busy ? '…' : 'Connecter à Strava'}</Text>
-          </Pressable>
-          <Pressable style={S.logCancelBtn} onPress={onDisconnect}>
-            <Text style={S.logCancelBtnText}>Effacer la config</Text>
-          </Pressable>
-        </>
-      )}
-
-      {creds && hasToken && (
-        <>
-          <Text style={[S.exoMeta, { marginBottom: 8, color: COLORS.ok }]}>✓ Connecté à Strava</Text>
-          <Pressable style={[S.walkHeroBtn, { backgroundColor: COLORS.ink }]} onPress={onSync} disabled={busy}>
+          <Text style={[S.exoMeta, { marginBottom: 8, color: COLORS.ok }]}>✓ Connecté</Text>
+          <Pressable
+            style={[S.walkHeroBtn, { backgroundColor: COLORS.ink }]}
+            onPress={onSync}
+            disabled={busy}
+          >
             <Text style={S.walkHeroBtnText}>{busy ? 'Sync…' : 'Synchroniser aujourd\'hui'}</Text>
           </Pressable>
           {activities && activities.length > 0 && (
