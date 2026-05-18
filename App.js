@@ -527,10 +527,10 @@ function MarcheScreen({ refreshKey, onChanged }) {
         {/* Aujourd'hui */}
         <Text style={S.sectionTitle}>Aujourd'hui · {tgt.dayLabel}</Text>
         <View style={S.walkHero}>
-          <Text style={S.walkHeroDay}>{tgt.label}</Text>
+          <Text style={S.walkHeroDay}>{tgt.dayLabel}</Text>
           <Text style={S.walkHeroDuration}>{formatDuration(tgt.minutes)}</Text>
-          <Text style={S.walkHeroSpot}>{tgt.spot.name}</Text>
-          <Text style={S.walkHeroIntensity}>{tgt.intensityLabel} · trajet {tgt.spot.driveMin} min</Text>
+          <Text style={S.walkHeroSpot}>{tgt.label}</Text>
+          <Text style={S.walkHeroIntensity}>Marche en forêt · {tgt.intensityLabel}</Text>
           {tgt.note && <Text style={S.walkHeroNote}>⚠ {tgt.note}</Text>}
           {tgt.vest && <Text style={S.walkHeroVest}>Gilet lesté : {tgt.vest} kg</Text>}
           <Pressable
