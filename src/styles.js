@@ -233,6 +233,54 @@ export const S = StyleSheet.create({
   logCancelBtn: { padding: 12, alignItems: 'center' },
   logCancelBtnText: { color: COLORS.muted, fontSize: 14 },
 
+  // === Nutrition ===
+  nutriStats: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    marginBottom: 12,
+  },
+  nutriStatBox: {
+    flex: 1, minWidth: '47%',
+    backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.line,
+    borderRadius: 10,
+    padding: 12,
+  },
+  nutriStatNum: { fontSize: 22, fontWeight: '700', color: COLORS.ink, fontVariant: ['tabular-nums'] },
+  nutriStatLabel: { fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 },
+
+  mealCard: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.line,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+  },
+  mealCardCritical: {
+    borderColor: COLORS.ink,
+    backgroundColor: '#fafafa',
+  },
+  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 },
+  mealTime: { fontSize: 13, color: COLORS.muted, fontVariant: ['tabular-nums'], fontWeight: '600' },
+  mealName: { fontSize: 15, fontWeight: '700', color: COLORS.ink, flex: 1, marginLeft: 8 },
+  mealFlag: { fontSize: 12, color: COLORS.warn, marginBottom: 4 },
+  mealComp: { fontSize: 13, color: COLORS.ink, lineHeight: 18, marginBottom: 8 },
+  mealMacros: { flexDirection: 'row', gap: 12 },
+  mealMacroBlock: { flex: 1 },
+  mealMacroNum: { fontSize: 14, fontWeight: '600', color: COLORS.ink, fontVariant: ['tabular-nums'] },
+  mealMacroLabel: { fontSize: 10, color: COLORS.muted, textTransform: 'uppercase' },
+
+  hydroRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderColor: COLORS.line,
+    gap: 10,
+  },
+  hydroRowLast: { borderBottomWidth: 0 },
+  hydroTime: { width: 80, fontSize: 12, color: COLORS.muted, fontVariant: ['tabular-nums'] },
+  hydroAction: { flex: 1, fontSize: 13, color: COLORS.ink },
+  hydroElec: { fontSize: 11, color: COLORS.warn, fontWeight: '600' },
+
   // === Marche ===
   walkHero: {
     backgroundColor: COLORS.ink,

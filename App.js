@@ -20,6 +20,7 @@ import {
   WALKING_PLAN, currentWeekNumber, getWeek, getBlock,
   targetForToday, weekTotalMinutes, formatDuration, dayLabel, dayKeyFromDate,
 } from './src/walkingPlan';
+import { NUTRITION } from './src/nutritionPlan';
 import * as Strava from './src/strava';
 import { LineChart } from './src/Chart';
 import { log } from './src/log';
@@ -534,6 +535,287 @@ function CourbeScreen({ refreshKey }) {
         />
       </View>
     </ScrollView>
+  );
+}
+
+// ============ NUTRI SCREEN ============
+
+function NutriScreen() {
+  const [expanded, setExpanded] = useState({ hydro: false, supp: false, schedule: false });
+  const toggle = (k) => setExpanded(prev => ({ ...prev, [k]: !prev[k] }));
+
+  return (
+    <ScrollView contentContainerStyle={S.scroll}>
+      <View style={S.nutriStats}>
+        <View style={S.nutriStatBox}>
+          <Text style={S.nutriStatNum}>{NUTRITION.proteinGramsPerDay} g</Text>
+          <Text style={S.nutriStatLabel}>Protéines / jour</Text>
+        </View>
+        <View style={S.nutriStatBox}>
+          <Text style={S.nutriStatNum}>{NUTRITION.totalDaily.kcal}</Text>
+          <Text style={S.nutriStatLabel}>kcal réelles</Text>
+        </View>
+        <View style={S.nutriStatBox}>
+          <Text style={S.nutriStatNum}>4</Text>
+          <Text style={S.nutriStatLabel}>Repas / jour</Text>
+        </View>
+        <View style={S.nutriStatBox}>
+          <Text style={S.nutriStatNum}>{NUTRITION.fastingHours}h</Text>
+          <Text style={S.nutriStatLabel}>Jeûne · {NUTRITION.eatingWindow}</Text>
+        </View>
+      </View>
+
+      <Text style={S.sectionTitle}>Les 4 repas</Text>
+      {NUTRITION.meals.map((m, i) => (
+        <View key={i} style={[S.mealCard, m.critical && S.mealCardCritical]}>
+          <View style={S.mealHeader}>
+            <Text style={S.mealTime}>{m.time}</Text>
+            <Text style={S.mealName}>{m.name}</Text>
+          </View>
+          {m.flag && <Text style={S.mealFlag}>★ {m.flag}</Text>}
+          <Text style={S.mealComp}>{m.composition}</Text>
+          <View style={S.mealMacros}>
+            <View style={S.mealMacroBlock}>
+              <Text style={S.mealMacroNum}>{m.macros.p}g</Text>
+              <Text style={S.mealMacroLabel}>Prot</Text>
+            </View>
+            <View style={S.mealMacroBlock}>
+              <Text style={S.mealMacroNum}>{m.macros.g}g</Text>
+              <Text style={S.mealMacroLabel}>Gluc</Text>
+            </View>
+            <View style={S.mealMacroBlock}>
+              <Text style={S.mealMacroNum}>{m.macros.l}g</Text>
+              <Text style={S.mealMacroLabel}>Lip</Text>
+            </View>
+            <View style={S.mealMacroBlock}>
+              <Text style={S.mealMacroNum}>{m.macros.kcal}</Text>
+              <Text style={S.mealMacroLabel}>kcal</Text>
+            </View>
+            <View style={S.mealMacroBlock}>
+              <Text style={[S.mealMacroNum, { color: COLORS.ok }]}>{m.leucine}g</Text>
+              <Text style={S.mealMacroLabel}>Leu</Text>
+            </View>
+          </View>
+        </View>
+      ))}
+
+      <Pressable onPress={() => toggle('hydro')}>
+        <Text style={S.sectionTitle}>
+          Hydratation · {NUTRITION.hydrationTotal}  {expanded.hydro ? '▾' : '▸'}
+        </Text>
+      </Pressable>
+      {expanded.hydro && (
+        <View style={S.card}>
+          {NUTRITION.hydration.map((h, i) => (
+            <View key={i} style={[S.hydroRow, i === NUTRITION.hydration.length - 1 && S.hydroRowLast]}>
+              <Text style={S.hydroTime}>{h.time}</Text>
+              <Text style={S.hydroAction}>{h.action}</Text>
+              {h.elec && <Text style={S.hydroElec}>+SEL</Text>}
+            </View>
+          ))}
+          <Text style={[S.exoMeta, { marginTop: 10, fontStyle: 'italic' }]}>
+            Indicateur : {NUTRITION.urineCheck}
+          </Text>
+        </View>
+      )}
+
+      <Pressable onPress={() => toggle('supp')}>
+        <Text style={S.sectionTitle}>
+          Suppléments · timing  {expanded.supp ? '▾' : '▸'}
+        </Text>
+      </Pressable>
+      {expanded.supp && (
+        <View style={S.card}>
+          {NUTRITION.supplements.map((s, i) => (
+            <View key={i} style={[S.hydroRow, i === NUTRITION.supplements.length - 1 && S.hydroRowLast]}>
+              <Text style={S.hydroTime}>{s.time}</Text>
+              <Text style={[S.hydroAction, s.critical && { fontWeight: '600' }]}>
+                {s.critical ? '⭐ ' : ''}{s.items}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Pressable onPress={() => toggle('schedule')}>
+        <Text style={S.sectionTitle}>
+          Planning du jour  {expanded.schedule ? '▾' : '▸'}
+        </Text>
+      </Pressable>
+      {expanded.schedule && (
+        <View style={S.card}>
+          {NUTRITION.dailySchedule.map((s, i) => (
+            <View key={i} style={[S.timelineRow, i === NUTRITION.dailySchedule.length - 1 && S.timelineRowLast]}>
+              <Text style={S.timelineTime}>{s.time}</Text>
+              <Text style={S.timelineText}>{s.text}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Text style={[S.exoMeta, { textAlign: 'center', marginTop: 12 }]}>
+        Budget mensuel : {NUTRITION.budgetMonthly.total} € (alim {NUTRITION.budgetMonthly.alim} + supp {NUTRITION.budgetMonthly.supp})
+      </Text>
+    </ScrollView>
+  );
+}
+
+// ============ STATS SCREEN (courbes + historique muscu mergés) ============
+
+function StatsScreen({ refreshKey, historyVersion, onHistoryChanged, onOpenEntry }) {
+  const [walkLog, setWalkLog] = useState([]);
+  const [weightLog, setWeightLog] = useState([]);
+  const [historyList, setHistoryList] = useState([]);
+  const [storeLen, setStoreLen] = useState(0);
+  const [startDate, setStartDate] = useState(WALKING_PLAN.startDate);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const s = await loadWalkStart();
+      if (s) setStartDate(s);
+      setWalkLog(await loadWalkLog());
+      setWeightLog(await loadWeightLog());
+      const h = await loadHistory();
+      setStoreLen(h.length);
+      setHistoryList(h.slice().reverse());
+    })();
+  }, [refreshKey, historyVersion]);
+
+  const flash = (m, ms = 2200) => { setToastMsg(m); setTimeout(() => setToastMsg(null), ms); };
+
+  const onExport = async () => {
+    const json = await exportData();
+    try {
+      await Clipboard.setStringAsync(json);
+      flash(`${historyList.length} séances copiées`);
+    } catch { flash('Copie impossible'); }
+  };
+  const onImportConfirm = async () => {
+    const res = await importData(importText.trim());
+    if (res.ok) {
+      setImportOpen(false); setImportText('');
+      flash(`${res.count} séances importées`);
+      onHistoryChanged && onHistoryChanged();
+    } else flash(res.error, 4000);
+  };
+
+  const weightData = weightLog
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(e => ({ x: e.date, y: Number(e.kg) }));
+
+  const weeklyVolume = (() => {
+    const m = new Map();
+    walkLog.forEach(e => {
+      const w = currentWeekNumber(startDate, new Date(e.date + 'T12:00:00'));
+      if (!w) return;
+      m.set(w, (m.get(w) || 0) + (e.minutes || 0));
+    });
+    return Array.from(m.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([wn, min]) => ({ x: 'S' + wn, y: +(min / 60).toFixed(1) }));
+  })();
+
+  const screenW = Dimensions.get('window').width - 56;
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={S.scroll}>
+        <Text style={S.sectionTitle}>Poids ({weightLog.length} pesées)</Text>
+        <View style={S.card}>
+          <LineChart
+            data={weightData}
+            width={screenW}
+            targetY={WALKING_PLAN.goals.targetWeightKgMedian}
+            color="#0f1115"
+            fillUnderColor="rgba(15,17,21,0.05)"
+            xFormat={(x) => x.slice(5)}
+            emptyLabel="Pèse-toi dans l'onglet Marche pour voir la courbe"
+          />
+        </View>
+
+        <Text style={S.sectionTitle}>Volume marche / semaine (h)</Text>
+        <View style={S.card}>
+          <LineChart
+            data={weeklyVolume}
+            width={screenW}
+            color={COLORS.ok}
+            fillUnderColor="rgba(26,122,58,0.10)"
+            emptyLabel="Log au moins 2 marches sur 2 semaines"
+          />
+        </View>
+
+        <Text style={S.sectionTitle}>Historique muscu ({historyList.length})</Text>
+        {historyList.length === 0 ? (
+          <Text style={S.empty}>Aucune séance muscu enregistrée pour l'instant.</Text>
+        ) : (
+          <View style={S.card}>
+            {historyList.map((entry, idx) => {
+              const dt = new Date(entry.date);
+              const dateStr = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+              const timeStr = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+              const exosLogged = entry.exos.filter(e => e.weights && e.weights.some(w => w));
+              const summary = exosLogged.map(e => `${e.name} ${e.weights.filter(w => w).join('/')}kg`).join(' · ');
+              const sIdx = storeLen - 1 - idx;
+              return (
+                <Pressable key={idx} onPress={() => onOpenEntry(sIdx)} android_ripple={{ color: COLORS.soft }}>
+                  <View style={S.historyRow}>
+                    <Text style={S.historyDate}>{dateStr} · {timeStr}  ›</Text>
+                    <Text style={S.historySession}>{entry.sessionTitle}</Text>
+                    <Text style={S.historyExos} numberOfLines={2}>{summary || '(aucun poids saisi)'}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        <View style={S.ioBar}>
+          <Pressable style={S.ioBtn} onPress={onExport} android_ripple={{ color: COLORS.soft }}>
+            <Text style={S.ioBtnText}>Exporter (presse-papiers)</Text>
+          </Pressable>
+          <Pressable style={S.ioBtn} onPress={() => setImportOpen(true)} android_ripple={{ color: COLORS.soft }}>
+            <Text style={S.ioBtnText}>Importer</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+
+      {toastMsg && (
+        <View style={S.toast}><Text style={S.toastText}>{toastMsg}</Text></View>
+      )}
+
+      {importOpen && (
+        <View style={S.modalOverlay}>
+          <View style={S.modalCard}>
+            <Text style={S.modalTitle}>Importer un JSON</Text>
+            <Text style={S.modalText}>
+              Colle un export précédent. L'historique sera REMPLACÉ.
+            </Text>
+            <TextInput
+              style={[S.logExoNote, { minHeight: 120, marginBottom: 16 }]}
+              value={importText}
+              onChangeText={setImportText}
+              placeholder='{"version":1,"history":[...]}'
+              placeholderTextColor={COLORS.muted}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={S.modalBtns}>
+              <Pressable style={S.modalBtnGhost} onPress={() => { setImportOpen(false); setImportText(''); }}>
+                <Text style={S.modalBtnGhostText}>Annuler</Text>
+              </Pressable>
+              <Pressable style={S.modalBtnPrimary} onPress={onImportConfirm} disabled={!importText.trim()}>
+                <Text style={S.modalBtnPrimaryText}>Remplacer</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -1234,8 +1516,8 @@ const TABS = [
   { key: 'today', label: "Auj." },
   { key: 'marche', label: 'Marche' },
   { key: 'training', label: 'Muscu' },
-  { key: 'curves', label: 'Courbes' },
-  { key: 'history', label: 'Histo' },
+  { key: 'nutri', label: 'Nutri' },
+  { key: 'stats', label: 'Stats' },
 ];
 
 function Shell() {
@@ -1280,8 +1562,8 @@ function Shell() {
   else if (tab === 'today') title = "Aujourd'hui";
   else if (tab === 'marche') title = 'Marche 32 sem';
   else if (tab === 'training') title = 'Entraînement';
-  else if (tab === 'curves') title = 'Courbes';
-  else title = 'Historique';
+  else if (tab === 'nutri') title = 'Nutrition';
+  else title = 'Stats';
 
   const inFullScreen = sessionMode != null || historyEntryIdx != null;
 
@@ -1312,14 +1594,15 @@ function Shell() {
           <TodayScreen onStartSession={startSession} draftSessionDay={draftSessionDay} />
         ) : tab === 'marche' ? (
           <MarcheScreen refreshKey={historyVersion} onChanged={() => setHistoryVersion(v => v + 1)} />
-        ) : tab === 'curves' ? (
-          <CourbeScreen refreshKey={historyVersion} />
         ) : tab === 'training' ? (
           <TrainingPickerScreen onPickSession={startSession} draftSessionDay={draftSessionDay} />
+        ) : tab === 'nutri' ? (
+          <NutriScreen />
         ) : (
-          <HistoryScreen
+          <StatsScreen
+            refreshKey={historyVersion}
             historyVersion={historyVersion}
-            onChanged={() => setHistoryVersion(v => v + 1)}
+            onHistoryChanged={() => setHistoryVersion(v => v + 1)}
             onOpenEntry={(idx) => setHistoryEntryIdx(idx)}
           />
         )}
