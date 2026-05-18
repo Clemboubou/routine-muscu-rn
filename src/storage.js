@@ -69,6 +69,26 @@ export async function importData(jsonStr) {
   }
 }
 
+// === ÉDITION / SUPPRESSION D'UNE ENTRÉE HISTORIQUE ===
+// L'index est calculé sur l'ordre stocké (chronologique). HistoryScreen affiche reverse,
+// donc on convertit côté UI : storeIdx = history.length - 1 - displayIdx.
+
+export async function updateHistoryEntry(storeIdx, newEntry) {
+  const h = await loadHistory();
+  if (storeIdx < 0 || storeIdx >= h.length) return false;
+  h[storeIdx] = newEntry;
+  await saveHistory(h);
+  return true;
+}
+
+export async function deleteHistoryEntry(storeIdx) {
+  const h = await loadHistory();
+  if (storeIdx < 0 || storeIdx >= h.length) return false;
+  h.splice(storeIdx, 1);
+  await saveHistory(h);
+  return true;
+}
+
 // === BROUILLON DE SÉANCE ===
 // Un seul brouillon actif à la fois (l'utilisateur fait une séance à la fois).
 // Persistance : survit à la fermeture de l'app, au reboot, à la batterie morte.

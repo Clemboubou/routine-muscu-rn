@@ -58,13 +58,14 @@ export function ExoThumb({ slug, height = 56, maxW = 88, iconSize = null }) {
     const ratio = EXO_RATIOS[slug] || 1;
     const naturalW = height * ratio;
     const w = Math.min(naturalW, maxW);
-    const useContain = naturalW > maxW;
+    // Toujours `contain` : la box est déjà au ratio de l'image, donc pas de vide,
+    // mais on garantit zéro crop sur Android (où cover crope parfois d'1-2 px).
     return (
       <View style={[boxStyle, { width: w }]}>
         <Image
           source={img}
           style={{ width: w, height }}
-          resizeMode={useContain ? 'contain' : 'cover'}
+          resizeMode="contain"
         />
       </View>
     );

@@ -11,6 +11,7 @@ import {
   loadHistory, lastMaxFor, lastWeightsFor,
   loadDraft, saveDraft, clearDraft, commitSession,
   exportData, importData,
+  updateHistoryEntry, deleteHistoryEntry,
 } from './src/storage';
 
 // Contexte pour ouvrir la lightbox depuis n'importe où dans l'arbre.
@@ -426,8 +427,9 @@ function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConf
 
 // ============ HISTORY ============
 
-function HistoryScreen({ historyVersion, onChanged }) {
+function HistoryScreen({ historyVersion, onChanged, onOpenEntry }) {
   const [list, setList] = useState([]);
+  const [storeLen, setStoreLen] = useState(0);
   const [toastMsg, setToastMsg] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
@@ -435,6 +437,7 @@ function HistoryScreen({ historyVersion, onChanged }) {
   useEffect(() => {
     (async () => {
       const h = await loadHistory();
+      setStoreLen(h.length);
       setList(h.slice().reverse());
     })();
   }, [historyVersion]);
@@ -495,13 +498,20 @@ function HistoryScreen({ historyVersion, onChanged }) {
               const timeStr = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
               const exosLogged = entry.exos.filter(e => e.weights && e.weights.some(w => w));
               const summary = exosLogged.map(e => `${e.name} ${e.weights.filter(w => w).join('/')}kg`).join(' · ');
+              const storeIdx = storeLen - 1 - idx;
               return (
-                <View key={idx} style={S.historyRow}>
-                  <Text style={S.historyDate}>{dateStr} · {timeStr}</Text>
-                  <Text style={S.historySession}>{entry.sessionTitle}</Text>
-                  <Text style={S.historyExos}>{summary || '(aucun poids saisi)'}</Text>
-                  {entry.notes ? <Text style={S.historyNotes}>{entry.notes}</Text> : null}
-                </View>
+                <Pressable
+                  key={idx}
+                  onPress={() => onOpenEntry(storeIdx)}
+                  android_ripple={{ color: COLORS.soft }}
+                >
+                  <View style={S.historyRow}>
+                    <Text style={S.historyDate}>{dateStr} · {timeStr}  ›</Text>
+                    <Text style={S.historySession}>{entry.sessionTitle}</Text>
+                    <Text style={S.historyExos}>{summary || '(aucun poids saisi)'}</Text>
+                    {entry.notes ? <Text style={S.historyNotes}>{entry.notes}</Text> : null}
+                  </View>
+                </Pressable>
               );
             })}
           </View>
@@ -545,6 +555,191 @@ function HistoryScreen({ historyVersion, onChanged }) {
   );
 }
 
+// ============ HISTORY DETAIL (édition + suppression) ============
+
+function HistoryDetailScreen({ storeIdx, onExit, onChanged, insets }) {
+  const [entry, setEntry] = useState(null);
+  const [weights, setWeights] = useState({}); // {slug: ['80','85',...]}
+  const [notes, setNotes] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  // Charger l'entrée
+  useEffect(() => {
+    (async () => {
+      const h = await loadHistory();
+      const e = h[storeIdx];
+      if (!e) { onExit(); return; }
+      setEntry(e);
+      const w = {};
+      e.exos.forEach(ex => { w[ex.slug] = ex.weights.slice(); });
+      setWeights(w);
+      setNotes(e.notes || '');
+    })();
+  }, [storeIdx]);
+
+  if (!entry) {
+    return <View style={{ flex: 1 }}><Text style={S.empty}>Chargement…</Text></View>;
+  }
+
+  const setWeight = (slug, idx, v) => {
+    setWeights(prev => {
+      const arr = [...(prev[slug] || [])];
+      arr[idx] = v.replace(',', '.');
+      return { ...prev, [slug]: arr };
+    });
+    setDirty(true);
+  };
+
+  const onSave = async () => {
+    const newEntry = {
+      ...entry,
+      exos: entry.exos.map(ex => ({
+        slug: ex.slug, name: ex.name,
+        weights: weights[ex.slug] || ex.weights,
+      })),
+      notes,
+    };
+    await updateHistoryEntry(storeIdx, newEntry);
+    onChanged();
+    onExit();
+  };
+
+  const onDelete = async () => {
+    await deleteHistoryEntry(storeIdx);
+    onChanged();
+    setConfirmDelete(false);
+    onExit();
+  };
+
+  const tryExit = () => {
+    if (dirty) setConfirmDiscard(true);
+    else onExit();
+  };
+
+  const dt = new Date(entry.date);
+  const dateStr = dt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const timeStr = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={S.logHeader}>
+        <Pressable onPress={tryExit} style={{ alignSelf: 'flex-start', marginBottom: 6 }}>
+          <Text style={{ color: COLORS.muted, fontSize: 14 }}>← Retour</Text>
+        </Pressable>
+        <Text style={S.logTitle}>{entry.sessionTitle}</Text>
+        <Text style={S.logProgress}>{dateStr} · {timeStr}</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+        {entry.exos.map((ex, i) => {
+          // Lookup metadata from SESSIONS for image/meta/warn
+          let meta = ex;
+          for (const di of [1, 3, 5]) {
+            const found = SESSIONS[di].exos.find(e => e.slug === ex.slug);
+            if (found) { meta = { ...found, ...ex }; break; }
+          }
+          return (
+            <HistoryExoEditBlock
+              key={i}
+              exo={meta}
+              weights={weights[ex.slug] || []}
+              onWeightChange={(idx, v) => setWeight(ex.slug, idx, v)}
+            />
+          );
+        })}
+
+        <Text style={S.sectionTitle}>Notes</Text>
+        <TextInput
+          style={[S.logExoNote, { minHeight: 80 }]}
+          value={notes}
+          onChangeText={(v) => { setNotes(v); setDirty(true); }}
+          placeholder="Notes de la séance…"
+          placeholderTextColor={COLORS.muted}
+          multiline
+        />
+
+        <Pressable
+          style={[S.logCancelBtn, { marginTop: 24 }]}
+          onPress={() => setConfirmDelete(true)}
+        >
+          <Text style={[S.logCancelBtnText, { color: '#c53030' }]}>Supprimer cette séance</Text>
+        </Pressable>
+      </ScrollView>
+
+      <View style={[S.logFooter, { paddingBottom: 12 + insets.bottom }]}>
+        <Pressable
+          style={[S.logFinishBtn, !dirty && { opacity: 0.4 }]}
+          onPress={onSave}
+          disabled={!dirty}
+          android_ripple={{ color: '#333' }}
+        >
+          <Text style={S.logFinishBtnText}>
+            {dirty ? 'Enregistrer les modifications' : 'Rien à modifier'}
+          </Text>
+        </Pressable>
+      </View>
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Supprimer cette séance ?"
+          text="L'entrée disparaît de l'historique. Action irréversible."
+          cancelLabel="Annuler"
+          confirmLabel="Supprimer"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
+      {confirmDiscard && (
+        <ConfirmModal
+          title="Quitter sans enregistrer ?"
+          text="Tes modifications seront perdues."
+          cancelLabel="Continuer"
+          confirmLabel="Quitter"
+          onCancel={() => setConfirmDiscard(false)}
+          onConfirm={() => { setConfirmDiscard(false); onExit(); }}
+        />
+      )}
+    </View>
+  );
+}
+
+function HistoryExoEditBlock({ exo, weights, onWeightChange }) {
+  const openLightbox = useContext(LightboxCtx);
+  return (
+    <View style={S.logExoBlock}>
+      <View style={S.logExoHeader}>
+        <Pressable onPress={() => openLightbox(exo.slug)} android_ripple={{ color: COLORS.soft, borderless: true }}>
+          <View style={S.exoThumbCol}>
+            <ExoThumb slug={exo.slug} iconSize={28} />
+          </View>
+        </Pressable>
+        <Text style={S.logExoName} numberOfLines={2}>{exo.name}</Text>
+      </View>
+      {exo.meta && <Text style={S.logExoMeta}>{exo.meta}</Text>}
+      <View style={S.logSetsRow}>
+        {weights.map((w, i) => {
+          const filled = !!w;
+          return (
+            <View key={i} style={S.logSetCell}>
+              <Text style={S.logSetLabel}>S{i + 1}</Text>
+              <TextInput
+                style={[S.logSetInput, filled && S.logSetInputFilled]}
+                value={w}
+                onChangeText={(v) => onWeightChange(i, v)}
+                placeholder="kg"
+                placeholderTextColor={COLORS.muted}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 // ============ SHELL ============
 
 const TABS = [
@@ -556,6 +751,7 @@ const TABS = [
 function Shell() {
   const [tab, setTab] = useState('today');
   const [sessionMode, setSessionMode] = useState(null); // null ou dayIdx (1/3/5)
+  const [historyEntryIdx, setHistoryEntryIdx] = useState(null); // null ou storeIdx
   const [historyVersion, setHistoryVersion] = useState(0);
   const [draftSessionDay, setDraftSessionDay] = useState(null);
   const [lightboxSlug, setLightboxSlug] = useState(null);
@@ -589,13 +785,16 @@ function Shell() {
 
   let title;
   if (sessionMode != null) title = SESSIONS[sessionMode].title;
+  else if (historyEntryIdx != null) title = 'Détail séance';
   else if (tab === 'today') title = "Aujourd'hui";
   else if (tab === 'training') title = 'Entraînement';
   else title = 'Historique';
 
+  const inFullScreen = sessionMode != null || historyEntryIdx != null;
+
   return (
     <LightboxCtx.Provider value={setLightboxSlug}>
-    <View style={[S.root, { paddingTop: insets.top, paddingBottom: sessionMode != null ? 0 : insets.bottom }]}>
+    <View style={[S.root, { paddingTop: insets.top, paddingBottom: inFullScreen ? 0 : insets.bottom }]}>
       <View style={S.topbar}>
         <Text style={S.topbarTitle}>{title}</Text>
         <Text style={S.topbarDate}>{todayLabel()}</Text>
@@ -609,6 +808,13 @@ function Shell() {
             onSaved={sessionSaved}
             insets={insets}
           />
+        ) : historyEntryIdx != null ? (
+          <HistoryDetailScreen
+            storeIdx={historyEntryIdx}
+            onExit={() => setHistoryEntryIdx(null)}
+            onChanged={() => setHistoryVersion(v => v + 1)}
+            insets={insets}
+          />
         ) : tab === 'today' ? (
           <TodayScreen onStartSession={startSession} draftSessionDay={draftSessionDay} />
         ) : tab === 'training' ? (
@@ -617,11 +823,12 @@ function Shell() {
           <HistoryScreen
             historyVersion={historyVersion}
             onChanged={() => setHistoryVersion(v => v + 1)}
+            onOpenEntry={(idx) => setHistoryEntryIdx(idx)}
           />
         )}
       </View>
 
-      {sessionMode == null && (
+      {!inFullScreen && (
         <View style={S.tabs}>
           {TABS.map(t => (
             <Pressable
