@@ -3,6 +3,7 @@
     "name": "Routine",
     "slug": "routine-muscu-rn",
     "version": "1.0.0",
+    "scheme": "routinemuscu",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -28,6 +29,9 @@
         "projectId": "20034ea5-e499-4e0d-bf13-885e6d6fd371"
       }
     },
-    "owner": "controlbreak"
+    "owner": "controlbreak",
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Platform, Image, Dimensions } from 'react-native';
 import { EXO_IMAGES, EXO_RATIOS } from './src/exoImages';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +20,8 @@ import {
   WALKING_PLAN, currentWeekNumber, getWeek, getBlock,
   targetForToday, weekTotalMinutes, formatDuration, dayLabel, dayKeyFromDate,
 } from './src/walkingPlan';
+import * as Strava from './src/strava';
+import { LineChart } from './src/Chart';
 
 // Contexte pour ouvrir la lightbox depuis n'importe où dans l'arbre.
 const LightboxCtx = createContext(() => {});
@@ -432,6 +434,293 @@ function ConfirmModal({ title, text, cancelLabel, confirmLabel, onCancel, onConf
   );
 }
 
+// ============ STRAVA SECTION (dans Marche) ============
+
+function StravaSection({ onSyncedWalk }) {
+  const [creds, setCreds] = useState(null);
+  const [hasToken, setHasToken] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [activities, setActivities] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  const refresh = async () => {
+    setCreds(await Strava.loadCreds());
+    setHasToken(!!(await Strava.loadToken()));
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const onSaveCreds = async () => {
+    await Strava.saveCreds({ clientId: clientId.trim(), clientSecret: clientSecret.trim() });
+    setSetupOpen(false);
+    setClientId(''); setClientSecret('');
+    await refresh();
+    setMsg('Identifiants enregistrés');
+    setTimeout(() => setMsg(null), 1800);
+  };
+
+  const onConnect = async () => {
+    setBusy(true);
+    const r = await Strava.connect();
+    setBusy(false);
+    if (r.ok) { setMsg('Connecté à Strava'); await refresh(); }
+    else setMsg(r.error);
+    setTimeout(() => setMsg(null), 2500);
+  };
+
+  const onSync = async () => {
+    setBusy(true);
+    setActivities(null);
+    const r = await Strava.fetchTodayWalkActivities();
+    setBusy(false);
+    if (!r.ok) { setMsg(r.error); setTimeout(() => setMsg(null), 2500); return; }
+    setActivities(r.activities);
+    if (r.activities.length === 0) {
+      setMsg('Aucune marche/randonnée trouvée aujourd\'hui');
+      setTimeout(() => setMsg(null), 2500);
+    }
+  };
+
+  const onImportActivity = async (a) => {
+    await onSyncedWalk(a);
+    setMsg('Marche importée');
+    setTimeout(() => setMsg(null), 1800);
+    setActivities(null);
+  };
+
+  const onDisconnect = async () => {
+    await Strava.clearCreds();
+    setActivities(null);
+    await refresh();
+    setMsg('Déconnecté');
+    setTimeout(() => setMsg(null), 1800);
+  };
+
+  return (
+    <View style={S.card}>
+      <Text style={[S.sectionTitle, { marginTop: 0 }]}>Strava</Text>
+
+      {!creds && !setupOpen && (
+        <>
+          <Text style={[S.exoMeta, { marginBottom: 8 }]}>
+            Pour synchroniser tes activités automatiquement, crée une app Strava (gratuit, 2 min) :
+            {'\n'}1. va sur strava.com/settings/api
+            {'\n'}2. récupère ton Client ID + Client Secret
+          </Text>
+          <Pressable style={[S.walkHeroBtn, { backgroundColor: COLORS.ink }]} onPress={() => setSetupOpen(true)}>
+            <Text style={S.walkHeroBtnText}>Configurer Strava</Text>
+          </Pressable>
+        </>
+      )}
+
+      {setupOpen && (
+        <>
+          <Text style={[S.logSetLabel, { marginBottom: 4, textAlign: 'left' }]}>Client ID</Text>
+          <TextInput
+            style={S.logSetInput}
+            value={clientId}
+            onChangeText={setClientId}
+            placeholder="ex: 123456"
+            placeholderTextColor={COLORS.muted}
+            keyboardType="number-pad"
+            autoCapitalize="none"
+          />
+          <Text style={[S.logSetLabel, { marginTop: 8, marginBottom: 4, textAlign: 'left' }]}>Client Secret</Text>
+          <TextInput
+            style={S.logSetInput}
+            value={clientSecret}
+            onChangeText={setClientSecret}
+            placeholder="chaîne hex 40 caractères"
+            placeholderTextColor={COLORS.muted}
+            autoCapitalize="none"
+            secureTextEntry
+          />
+          <View style={[S.modalBtns, { marginTop: 12 }]}>
+            <Pressable style={S.modalBtnGhost} onPress={() => setSetupOpen(false)}>
+              <Text style={S.modalBtnGhostText}>Annuler</Text>
+            </Pressable>
+            <Pressable style={S.modalBtnPrimary} onPress={onSaveCreds} disabled={!clientId.trim() || !clientSecret.trim()}>
+              <Text style={S.modalBtnPrimaryText}>Enregistrer</Text>
+            </Pressable>
+          </View>
+          <Text style={[S.exoMeta, { marginTop: 10, fontSize: 11 }]}>
+            Redirect URI à mettre dans Strava : routinemuscu://strava
+          </Text>
+        </>
+      )}
+
+      {creds && !hasToken && (
+        <>
+          <Text style={[S.exoMeta, { marginBottom: 8 }]}>App configurée (client ID {creds.clientId}). Plus qu'à autoriser :</Text>
+          <Pressable style={[S.walkHeroBtn, { backgroundColor: '#fc4c02' }]} onPress={onConnect} disabled={busy}>
+            <Text style={[S.walkHeroBtnText, { color: '#fff' }]}>{busy ? '…' : 'Connecter à Strava'}</Text>
+          </Pressable>
+          <Pressable style={S.logCancelBtn} onPress={onDisconnect}>
+            <Text style={S.logCancelBtnText}>Effacer la config</Text>
+          </Pressable>
+        </>
+      )}
+
+      {creds && hasToken && (
+        <>
+          <Text style={[S.exoMeta, { marginBottom: 8, color: COLORS.ok }]}>✓ Connecté à Strava</Text>
+          <Pressable style={[S.walkHeroBtn, { backgroundColor: COLORS.ink }]} onPress={onSync} disabled={busy}>
+            <Text style={S.walkHeroBtnText}>{busy ? 'Sync…' : 'Synchroniser aujourd\'hui'}</Text>
+          </Pressable>
+          {activities && activities.length > 0 && (
+            <View style={{ marginTop: 12 }}>
+              {activities.map(a => (
+                <Pressable key={a.id} style={S.pickerCard} onPress={() => onImportActivity(a)}>
+                  <Text style={S.pickerTitle}>{a.name}</Text>
+                  <Text style={S.exoMeta}>
+                    {formatDuration(a.duration_min)} · {a.distance_km} km · +{a.elev_m} m
+                    {a.kcal ? ` · ${a.kcal} kcal` : ''}
+                    {a.hr_avg ? ` · FC moy ${a.hr_avg}` : ''}
+                  </Text>
+                  <Text style={S.pickerCta}>Importer comme marche du jour →</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <Pressable style={S.logCancelBtn} onPress={onDisconnect}>
+            <Text style={S.logCancelBtnText}>Déconnecter</Text>
+          </Pressable>
+        </>
+      )}
+
+      {msg && (
+        <View style={[S.toast, { bottom: 100 }]}><Text style={S.toastText}>{msg}</Text></View>
+      )}
+    </View>
+  );
+}
+
+// ============ COURBE SCREEN ============
+
+function CourbeScreen({ refreshKey }) {
+  const [walkLog, setWalkLog] = useState([]);
+  const [weightLog, setWeightLog] = useState([]);
+  const [historyLog, setHistoryLog] = useState([]);
+  const [startDate, setStartDate] = useState(WALKING_PLAN.startDate);
+
+  useEffect(() => {
+    (async () => {
+      const s = await loadWalkStart();
+      if (s) setStartDate(s);
+      setWalkLog(await loadWalkLog());
+      setWeightLog(await loadWeightLog());
+      setHistoryLog(await loadHistory());
+    })();
+  }, [refreshKey]);
+
+  // Données poids
+  const weightData = weightLog
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(e => ({ x: e.date, y: Number(e.kg) }));
+
+  // Volume marche par semaine du plan (h)
+  const weeklyVolume = (() => {
+    const m = new Map(); // weekNum -> minutes
+    walkLog.forEach(e => {
+      const w = currentWeekNumber(startDate, new Date(e.date + 'T12:00:00'));
+      if (!w) return;
+      m.set(w, (m.get(w) || 0) + (e.minutes || 0));
+    });
+    return Array.from(m.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([wn, min]) => ({ x: 'S' + wn, y: +(min / 60).toFixed(1) }));
+  })();
+
+  // Volume muscu : nombre de séances par semaine ISO (8 dernières)
+  const muscuPerWeek = (() => {
+    const m = new Map();
+    historyLog.forEach(e => {
+      const d = new Date(e.date);
+      const yw = isoYearWeek(d);
+      m.set(yw, (m.get(yw) || 0) + 1);
+    });
+    return Array.from(m.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-12)
+      .map(([yw, n]) => ({ x: yw.slice(5), y: n })); // affiche juste "W23"
+  })();
+
+  // Max poids sur un exo récurrent (ex: leg-press) sur le temps
+  const legPressProg = (() => {
+    const pts = [];
+    historyLog.forEach(e => {
+      const ex = e.exos.find(x => x.slug === 'leg-press');
+      if (ex && ex.weights) {
+        const ws = ex.weights.filter(w => w).map(Number);
+        if (ws.length) pts.push({ x: e.date.slice(5, 10), y: Math.max(...ws) });
+      }
+    });
+    return pts;
+  })();
+
+  const screenW = Dimensions.get('window').width - 56;
+
+  return (
+    <ScrollView contentContainerStyle={S.scroll}>
+      <Text style={S.sectionTitle}>Poids ({weightLog.length} pesées)</Text>
+      <View style={S.card}>
+        <LineChart
+          data={weightData}
+          width={screenW}
+          targetY={WALKING_PLAN.goals.targetWeightKgMedian}
+          color="#0f1115"
+          fillUnderColor="rgba(15,17,21,0.05)"
+          xFormat={(x) => x.slice(5)}
+          emptyLabel="Pèse-toi dans l'onglet Marche pour voir la courbe"
+        />
+      </View>
+
+      <Text style={S.sectionTitle}>Volume marche / semaine (heures)</Text>
+      <View style={S.card}>
+        <LineChart
+          data={weeklyVolume}
+          width={screenW}
+          color={COLORS.ok}
+          fillUnderColor="rgba(26,122,58,0.10)"
+          emptyLabel="Log au moins 2 marches sur 2 semaines"
+        />
+      </View>
+
+      <Text style={S.sectionTitle}>Séances muscu / semaine</Text>
+      <View style={S.card}>
+        <LineChart
+          data={muscuPerWeek}
+          width={screenW}
+          color={COLORS.ink}
+          emptyLabel="Pas encore de séances muscu enregistrées"
+        />
+      </View>
+
+      <Text style={S.sectionTitle}>Progression presse à cuisses (max kg)</Text>
+      <View style={S.card}>
+        <LineChart
+          data={legPressProg}
+          width={screenW}
+          color="#b25400"
+          emptyLabel="Pas encore 2 séances avec la presse à cuisses"
+        />
+      </View>
+    </ScrollView>
+  );
+}
+
+function isoYearWeek(d) {
+  const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+  return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
 // ============ MARCHE (plan 32 sem) ============
 
 function MarcheScreen({ refreshKey, onChanged }) {
@@ -590,6 +879,23 @@ function MarcheScreen({ refreshKey, onChanged }) {
             })}
           </View>
         </View>
+
+        {/* Strava sync */}
+        <StravaSection
+          onSyncedWalk={async (a) => {
+            const note = `Strava: ${a.distance_km} km · +${a.elev_m} m`
+              + (a.kcal ? ` · ${a.kcal} kcal` : '')
+              + (a.hr_avg ? ` · FC ${a.hr_avg}` : '');
+            await logWalk({
+              date: todayIso,
+              minutes: a.duration_min,
+              note,
+            });
+            const l = await loadWalkLog();
+            setWalkLog(l);
+            onChanged && onChanged();
+          }}
+        />
 
         {/* Poids */}
         <Text style={S.sectionTitle}>Poids</Text>
@@ -1014,10 +1320,11 @@ function HistoryExoEditBlock({ exo, weights, onWeightChange }) {
 // ============ SHELL ============
 
 const TABS = [
-  { key: 'today', label: "Aujourd'hui" },
+  { key: 'today', label: "Auj." },
   { key: 'marche', label: 'Marche' },
   { key: 'training', label: 'Muscu' },
-  { key: 'history', label: 'Historique' },
+  { key: 'curves', label: 'Courbes' },
+  { key: 'history', label: 'Histo' },
 ];
 
 function Shell() {
@@ -1061,6 +1368,7 @@ function Shell() {
   else if (tab === 'today') title = "Aujourd'hui";
   else if (tab === 'marche') title = 'Marche 32 sem';
   else if (tab === 'training') title = 'Entraînement';
+  else if (tab === 'curves') title = 'Courbes';
   else title = 'Historique';
 
   const inFullScreen = sessionMode != null || historyEntryIdx != null;
@@ -1092,6 +1400,8 @@ function Shell() {
           <TodayScreen onStartSession={startSession} draftSessionDay={draftSessionDay} />
         ) : tab === 'marche' ? (
           <MarcheScreen refreshKey={historyVersion} onChanged={() => setHistoryVersion(v => v + 1)} />
+        ) : tab === 'curves' ? (
+          <CourbeScreen refreshKey={historyVersion} />
         ) : tab === 'training' ? (
           <TrainingPickerScreen onPickSession={startSession} draftSessionDay={draftSessionDay} />
         ) : (
